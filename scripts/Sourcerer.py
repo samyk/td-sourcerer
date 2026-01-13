@@ -598,7 +598,7 @@ class Sourcerer:
         s = self.stored['SelectedSource']
 
         # get a copy of the source
-        source = self.stored['Sources'][s].getRaw()
+        source = self.stored['Sources'][s]#.getRaw()
 
         source = self._checkUniqueName(source)
 

@@ -64,8 +64,8 @@ class SourcererLite:
         elif isinstance(source, int):
             s = source
             index = source
-            source_json = self.stored['Sources'][s]
-            if source <= len(self.stored['Sources'])-1:
+            if source <= len(self.stored['Sources']) - 1:
+                source_json = self.stored['Sources'][s]
                 name = source_json['Settings']['Name']
             else:
                 print('source index', s, 'is out of range')
@@ -481,8 +481,21 @@ class SourcererLite:
         a = self.stored['Sources']
 
         if len(a) > 1:
+            # Check if we're deleting the active/live source
+            deleted_name = a[s]['Settings']['Name']
+            is_active = (self.stored['ActiveSource']['name'] == deleted_name)
+
             # pop the source from the list
             a.pop(s)
+
+            # If we deleted the active source, clear ActiveSource
+            if is_active:
+                self.stored['ActiveSource'] = {'index': -1, 'name': ''}
+
+            # Update ActiveSource index if it was after the deleted source
+            elif self.stored['ActiveSource']['index'] > s:
+                self.stored['ActiveSource']['index'] -= 1
+
             # If we deleted the last item, select the new last item
             if s >= len(a):
                 self.SelectSource(len(a) - 1)
@@ -498,6 +511,9 @@ class SourcererLite:
             return
 
         if 0 <= index < len(self.stored['Sources']):
+            # Get old name to check if this is the live source
+            old_name = self.stored['Sources'][index]['Settings']['Name']
+
             # Check for unique name
             names = [s['Settings']['Name'] for s in self.stored['Sources']]
             name = str(new_name)
@@ -513,6 +529,11 @@ class SourcererLite:
                 i += 1
 
             self.stored['Sources'][index]['Settings']['Name'] = name
+
+            # Update ActiveSource name if we renamed the live source
+            if self.stored['ActiveSource']['name'] == old_name:
+                self.stored['ActiveSource']['name'] = name
+
             self._updateSourceList()
             self.UpdateSelectedSourceComp()
         return
@@ -532,6 +553,10 @@ class SourcererLite:
         if to_index > len(sources):
             to_index = len(sources)
 
+        # Track if we're moving the active source
+        active_index = self.stored['ActiveSource']['index']
+        moving_active = (from_index == active_index)
+
         # Get the source to move
         source = sources.pop(from_index)
 
@@ -541,6 +566,19 @@ class SourcererLite:
 
         # Insert at new position
         sources.insert(to_index, source)
+
+        # Update ActiveSource index
+        if moving_active:
+            # The active source moved to the new position
+            self.stored['ActiveSource']['index'] = to_index
+        elif active_index >= 0:
+            # Adjust active index if it was affected by the move
+            if from_index < active_index <= to_index:
+                # Source moved from before active to after - active shifts down
+                self.stored['ActiveSource']['index'] -= 1
+            elif to_index <= active_index < from_index:
+                # Source moved from after active to before - active shifts up
+                self.stored['ActiveSource']['index'] += 1
 
         # Update selection to follow the moved item
         self.stored['SelectedSource'] = to_index

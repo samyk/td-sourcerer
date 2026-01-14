@@ -62,10 +62,7 @@ class SourcererList:
 
     def getSourceNames(self):
         """Get list of source names from storage."""
-        sources = ext.SOURCERER.Sources
-        if sources is None:
-            return []
-        return [s.get('Settings', {}).get('Name', f'Source {i}') for i, s in enumerate(sources)]
+        return ext.SOURCERER.sourceNames
 
     def getSourceName(self, index):
         """Get name of source at given index."""
@@ -76,16 +73,15 @@ class SourcererList:
 
     def getSelectedIndex(self):
         """Get currently selected source index."""
-        return ext.SOURCERER.stored.get('SelectedSource', 0)
+        return ext.SOURCERER.selectedIndex
 
     def getLiveSourceName(self):
         """Get the name of the currently live/active source."""
-        active = ext.SOURCERER.stored.get('ActiveSource', {})
-        return active.get('name', '')
+        return ext.SOURCERER.liveName
 
     def getSafety(self):
         """Get safety state - when True, modifications are blocked."""
-        return ext.SOURCERER.stored.get('Safety', False)
+        return ext.SOURCERER.Safety
 
     def InitData(self):
         """Initialize/rebuild the list data and refresh display.

@@ -7,6 +7,12 @@ import os
 from TDStoreTools import StorageManager, DependList
 
 
+class TransitionState:
+    """State machine states for source transitions."""
+    IDLE = 'idle'
+    TRANSITIONING = 'transitioning'
+
+
 class SourcererLite:
     def __init__(self, ownerComp):
         # The component to which this extension is attached
@@ -31,6 +37,39 @@ class SourcererLite:
 
         self.stored = StorageManager(self, self.DataComp, storedItems)
         self._updateSourceList()
+
+        # State machine for transitions
+        self.transitionState = TransitionState.IDLE
+        self.pendingQueue = []  # Queue of sources to switch to
+
+    # -------------------------------------------------------------------------
+    # Public Properties (clean interface for other components like lists)
+    # -------------------------------------------------------------------------
+
+    @property
+    def sourceNames(self):
+        """List of source names for display."""
+        return [s['Settings']['Name'] for s in self.stored['Sources']]
+
+    @property
+    def selectedIndex(self):
+        """Currently selected source index."""
+        return self.stored['SelectedSource']
+
+    @property
+    def liveIndex(self):
+        """Index of the currently live/active source."""
+        return self.stored['ActiveSource']['index']
+
+    @property
+    def liveName(self):
+        """Name of the currently live/active source."""
+        return self.stored['ActiveSource']['name']
+
+    @property
+    def isTransitioning(self):
+        """Whether a transition is currently in progress."""
+        return self.transitionState == TransitionState.TRANSITIONING
 
     @property
     def Safety(self):
@@ -76,18 +115,37 @@ class SourcererLite:
         return source_json, index, name
 
     def SwitchToSource(self, source):
+        """Switch to a source. If already transitioning, queues the request."""
+        # If already transitioning, add to queue
+        if self.transitionState == TransitionState.TRANSITIONING:
+            # Avoid duplicate consecutive entries
+            if not self.pendingQueue or self.pendingQueue[-1] != source:
+                self.pendingQueue.append(source)
+            return
+
+        self._beginTransition(source)
+
+    def _beginTransition(self, source):
+        """Internal: Start the actual transition to a source."""
+        self.transitionState = TransitionState.TRANSITIONING
+
         state = self.stored['State']
-        next_state = 1-state
+        next_state = 1 - state
 
         source_comp = self.ownerComp.op('source' + str(next_state))
 
-        source, index, name = self._getSource(source)
+        source_data, index, name = self._getSource(source)
+
+        if source_data is None:
+            # Invalid source, abort transition
+            self.transitionState = TransitionState.IDLE
+            return
 
         # update the source comp
         self.UpdateSourceCompQuick(source_comp, index)
 
         # set the timers and reload the movie
-        source_type = source['Settings']['Sourcetype']
+        source_type = source_data['Settings']['Sourcetype']
 
         source_comp.op('count1').par.resetpulse.pulse()
         source_comp.op('timerFile').par.initialize.pulse()
@@ -96,23 +154,23 @@ class SourcererLite:
         if source_type == 'file':
             source_comp.op('moviefilein0').par.reloadpulse.pulse()
 
-            done_on = source['File']['Doneonfile']
+            done_on = source_data['File']['Doneonfile']
             if done_on == 'timer':
                 source_comp.op('startTimerFile').run(delayFrames=1)
 
         else:
-            done_on = source['TOP']['Doneontop']
+            done_on = source_data['TOP']['Doneontop']
             if done_on == 'timer':
                 source_comp.op('startTimerTOP').run(delayFrames=1)
 
-            cue_vid = source['TOP']['Enablecuetop']
+            cue_vid = source_data['TOP']['Enablecuetop']
 
             if cue_vid:
-                vid = source['TOP']['Cuetop']
+                vid = source_data['TOP']['Cuetop']
                 op(vid).par.cuepulse.pulse()
 
         # set the transition (lite version: GLSL only - Fade, Fade Color, Slide)
-        settings = source['Settings']
+        settings = source_data['Settings']
         tcomp_par = self.transitionComp.par
 
         glsl_trans = settings['Glsltransition']
@@ -127,7 +185,7 @@ class SourcererLite:
         if glsl_trans in glsl_transitions:
             transition_pars = glsl_transitions[glsl_trans]
             for p in transition_pars:
-                val = source['GLSL Transition'][p]
+                val = source_data['GLSL Transition'][p]
                 self._setParVal(p, val, self.transitionComp)
 
         # set the transition time
@@ -148,15 +206,35 @@ class SourcererLite:
         self.stored['ActiveSource'] = {
             'index': index,
             'name': name,
-            'source': source
+            'source': source_data
         }
 
         try:
-            self.ownerComp.mod.callbacks.onSwitchToSource(index, name, source)
+            self.ownerComp.mod.callbacks.onSwitchToSource(index, name, source_data)
         except Exception as e:
             debug('switch to source callback error')
             debug(e)
-        return
+
+    def OnTransitionComplete(self):
+        """Called when the transition animation finishes.
+        Hook this up to be called when the transition timer/animation ends."""
+        self.transitionState = TransitionState.IDLE
+
+        # Process next item in queue if any
+        if self.pendingQueue:
+            next_source = self.pendingQueue.pop(0)
+            self.SwitchToSource(next_source)
+
+    def ClearPendingQueue(self):
+        """Clear all pending source switches."""
+        self.pendingQueue.clear()
+
+    def SkipToLastPending(self):
+        """Clear queue but keep last item - jump to final destination."""
+        if len(self.pendingQueue) > 1:
+            last = self.pendingQueue[-1]
+            self.pendingQueue.clear()
+            self.pendingQueue.append(last)
 
     def SwitchToSelectedSource(self):
         s = self.stored['SelectedSource']

@@ -435,11 +435,22 @@ class SourcererList:
             ext.SOURCERER.RenameSource(source_index, val)
         return
 
-    def onHover(self, comp, row, col, coords, prevRow, prevCol, prevCoords, dragItems):
-        """Handle external drag hover."""
-        return True
+    def onDragHover(self, comp, info):
+        """Handle external drag hover - return True if we accept these items."""
+        dragItems = info.get('dragItems', [])
+        # Accept files and TOPs
+        for item in dragItems:
+            if isinstance(item, str):
+                # File path
+                return True
+            elif hasattr(item, 'OPType'):
+                # TD operator - accept TOPs
+                if item.OPType == 'TOP':
+                    return True
+        return True  # Accept by default
 
-    def onDrop(self, comp, row, col, coords, prevRow, prevCol, prevCoords, dragItems):
+    def onDrop(self, comp, info):
         """Handle external file/TOP drops."""
+        dragItems = info.get('dragItems', [])
         ext.SOURCERER._DropSource(dragItems)
-        return True
+        return {'droppedOn': comp}

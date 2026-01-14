@@ -25,11 +25,21 @@ class SourcererLite:
                 'default': {'index': 0, 'name': ''},
                 'dependable': True
             },
-            {'name': 'State', 'default': 0, 'dependable': True}
+            {'name': 'State', 'default': 0, 'dependable': True},
+            {'name': 'Safety', 'default': False, 'dependable': True}
         ]
 
         self.stored = StorageManager(self, self.DataComp, storedItems)
         self._updateSourceList()
+
+    @property
+    def Safety(self):
+        """Get safety state."""
+        return self.stored['Safety']
+
+    def ToggleSafety(self):
+        """Toggle safety mode on or off."""
+        self.stored['Safety'] = not self.stored['Safety']
 
     def _updateSourceList(self):
         source_list = [str(s['Settings']['Name']) for s in self.stored['Sources']]
@@ -461,6 +471,10 @@ class SourcererLite:
         return
 
     def DeleteSource(self):
+        # Block if safety is on
+        if self.stored['Safety']:
+            return
+
         # get the selected source
         s = self.stored['SelectedSource']
         # get the list of sources
@@ -474,6 +488,93 @@ class SourcererLite:
                 self.SelectSource(len(a) - 1)
             else:
                 self.SelectSource(s)
+        self._updateSourceList()
+        return
+
+    def RenameSource(self, index, new_name):
+        """Rename a source at the given index."""
+        # Block if safety is on
+        if self.stored['Safety']:
+            return
+
+        if 0 <= index < len(self.stored['Sources']):
+            # Check for unique name
+            names = [s['Settings']['Name'] for s in self.stored['Sources']]
+            name = str(new_name)
+
+            # Remove current name from check
+            names.pop(index)
+
+            # Make unique if needed
+            orig_name = name
+            i = 0
+            while name in names:
+                name = orig_name.rstrip('0123456789') + str(i)
+                i += 1
+
+            self.stored['Sources'][index]['Settings']['Name'] = name
+            self._updateSourceList()
+            self.UpdateSelectedSourceComp()
+        return
+
+    def MoveSource(self, from_index, to_index):
+        """Move a source from one position to another."""
+        # Block if safety is on
+        if self.stored['Safety']:
+            return
+
+        sources = self.stored['Sources']
+
+        if from_index < 0 or from_index >= len(sources):
+            return
+        if to_index < 0:
+            to_index = 0
+        if to_index > len(sources):
+            to_index = len(sources)
+
+        # Get the source to move
+        source = sources.pop(from_index)
+
+        # Adjust to_index if we removed from before it
+        if from_index < to_index:
+            to_index -= 1
+
+        # Insert at new position
+        sources.insert(to_index, source)
+
+        # Update selection to follow the moved item
+        self.stored['SelectedSource'] = to_index
+        self._updateSourceList()
+        self.UpdateSelectedSourceComp()
+        return
+
+    def CopySourceData(self, index):
+        """Copy source data at index for clipboard operations."""
+        if 0 <= index < len(self.stored['Sources']):
+            # Deep copy the source data
+            return json.loads(json.dumps(self.stored['Sources'][index]))
+        return None
+
+    def PasteSourceData(self, index, data):
+        """Paste source data after the given index."""
+        # Block if safety is on
+        if self.stored['Safety']:
+            return
+
+        if data is None:
+            return
+
+        # Deep copy to avoid reference issues
+        new_source = json.loads(json.dumps(data))
+
+        # Ensure unique name
+        new_source = self._checkUniqueName(new_source)
+
+        # Insert after the specified index
+        self.stored['Sources'].insert(index + 1, new_source)
+
+        # Select the new source
+        self.SelectSource(index + 1)
         self._updateSourceList()
         return
 
@@ -511,6 +612,10 @@ class SourcererLite:
         return
 
     def MoveSourceUp(self):
+        # Block if safety is on
+        if self.stored['Safety']:
+            return
+
         # get the selected source
         s = self.stored['SelectedSource']
 
@@ -531,6 +636,10 @@ class SourcererLite:
         return
 
     def MoveSourceDown(self):
+        # Block if safety is on
+        if self.stored['Safety']:
+            return
+
         # get the selected source
         s = self.stored['SelectedSource']
 

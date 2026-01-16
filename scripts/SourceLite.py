@@ -54,10 +54,12 @@ class SourceLite:
         if self.ownerComp.par.Active:
             if self.ownerComp.name in ['source0', 'source1']:
                 if self.ownerComp.digits == ext.SOURCERER.State:
+                    # Fire the onSourceDone callback
+                    ext.SOURCERER.OnSourceDone()
+
                     # play next
                     if follow_action == 'play_next':
-                        cur_index = parent.SOURCERER.ActiveSource['index']
-                        parent.SOURCERER.SwitchToSource(cur_index + 1)
+                        ext.SOURCERER.SwitchToSource(ext.SOURCERER.activeIndex + 1)
 
                     # go to index
                     elif follow_action == 'goto_index':
@@ -65,7 +67,7 @@ class SourceLite:
                             goto_index = self.ownerComp.par.Gotoindexfile
                         else:
                             goto_index = self.ownerComp.par.Gotoindextop
-                        parent.SOURCERER.SwitchToSource(int(goto_index))
+                        ext.SOURCERER.SwitchToSource(int(goto_index))
 
                     # go to name
                     elif follow_action == 'goto_name':
@@ -73,4 +75,4 @@ class SourceLite:
                             goto_name = self.ownerComp.par.Gotonamefile
                         else:
                             goto_name = self.ownerComp.par.Gotonametop
-                        parent.SOURCERER.SwitchToSource(str(goto_name))
+                        ext.SOURCERER.SwitchToSource(str(goto_name))

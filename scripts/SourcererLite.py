@@ -4,7 +4,9 @@
 
 import json
 import os
+from pprint import pprint
 from TDStoreTools import StorageManager, DependList
+from CallbacksExt import CallbacksExt
 
 
 class TransitionState:
@@ -13,10 +15,32 @@ class TransitionState:
     TRANSITIONING = 'transitioning'
 
 
-class SourcererLite:
+class SourcererLite(CallbacksExt):
     def __init__(self, ownerComp):
         # The component to which this extension is attached
         self.ownerComp = ownerComp
+        
+        self.callbackDat = self.ownerComp.par.Callbackdat.eval()
+
+        try:
+            super().__init__(ownerComp)
+        except Exception:
+            error_msg = traceback.format_exc()
+            self.ownerComp.addScriptError(
+                f"{error_msg} Error in CallbacksExt __init__. See textport."
+            )
+            print(f"Error initializing callbacks - {self.ownerComp.path}")
+            print(error_msg)
+
+        try:
+            self.DoCallback('onInit', {'ownerComp': self.ownerComp})
+        except Exception:
+            error_msg = traceback.format_exc()
+            self.ownerComp.addScriptError(
+                f"{error_msg} Error in custom onInit callback. See textport."
+            )
+            print(error_msg)
+        
         self.DataComp = ownerComp.op('data')
         self.transitionComp = ownerComp.op('transitions')
         self.switcherState = ownerComp.op('state')
@@ -25,14 +49,20 @@ class SourcererLite:
         storedItems = [
             {'name': 'Sources', 'default': [], 'dependable': False},
             {'name': 'SourceList', 'default': [], 'dependable': True},
-            {'name': 'SelectedSource', 'default': 0, 'dependable': True},
             {
-                'name': 'ActiveSource',
+                'name': 'SelectedSource',
                 'default': {'index': 0, 'name': ''},
                 'dependable': True
             },
+            {
+                'name': 'ActiveSource',
+                'default': {'index': -1, 'name': ''},
+                'dependable': True
+            },
             {'name': 'State', 'default': 0, 'dependable': True},
-            {'name': 'Safety', 'default': False, 'dependable': True}
+            {'name': 'Safety', 'default': False, 'dependable': True},
+            {'name': 'Log', 'default': [], 'dependable': True},
+            {'name': 'LogFormatted', 'default': [], 'dependable': True}
         ]
 
         self.stored = StorageManager(self, self.DataComp, storedItems)
@@ -54,22 +84,32 @@ class SourcererLite:
     @property
     def selectedIndex(self):
         """Currently selected source index."""
-        return self.stored['SelectedSource']
+        return self.stored['SelectedSource']['index']
 
     @property
-    def liveIndex(self):
-        """Index of the currently live/active source."""
+    def selectedName(self):
+        """Currently selected source name."""
+        return self.stored['SelectedSource']['name']
+
+    @property
+    def activeIndex(self):
+        """Index of the currently active source."""
         return self.stored['ActiveSource']['index']
 
     @property
-    def liveName(self):
-        """Name of the currently live/active source."""
+    def activeName(self):
+        """Name of the currently active source."""
         return self.stored['ActiveSource']['name']
 
     @property
     def isTransitioning(self):
         """Whether a transition is currently in progress."""
         return self.transitionState == TransitionState.TRANSITIONING
+
+    @property
+    def isEditingActive(self):
+        """Whether the selected source is the active source (for UI warnings)."""
+        return self.stored['SelectedSource']['index'] == self.stored['ActiveSource']['index']
 
     @property
     def Safety(self):
@@ -79,6 +119,96 @@ class SourcererLite:
     def ToggleSafety(self):
         """Toggle safety mode on or off."""
         self.stored['Safety'] = not self.stored['Safety']
+
+    # -------------------------------------------------------------------------
+    # Logging
+    # -------------------------------------------------------------------------
+
+    # Log colors (RGB 0-255) based on list color palette
+    LOG_COLORS = {
+        'time': (178, 178, 178),        # label_font gray
+        'SwitchToSource': (51, 127, 204),      # blue
+        'TransitionComplete': (140, 220, 180),  # green
+        'SourceDone': (255, 200, 50),           # yellow
+        'StoreDefault': (200, 150, 255),        # purple
+        'AddSource': (100, 200, 100),           # green
+        'DeleteSource': (255, 100, 100),        # red
+        'RenameSource': (100, 200, 200),        # cyan
+        'MoveSource': (100, 150, 255),          # light blue
+        'Init': (200, 200, 200),                # gray
+        'data': (255, 255, 255),        # white
+    }
+
+    def _log(self, event, data):
+        """Add an entry to the log with timestamp. Newest first, max 20 entries."""
+        import datetime
+
+        # Format time with 2 decimal places on seconds
+        now = datetime.datetime.now()
+        time_str = now.strftime('%Y-%m-%d %H:%M:%S') + f'.{now.microsecond // 10000:02d}'
+
+        entry = {
+            'time': time_str,
+            'event': event,
+            'data': data
+        }
+        self.stored['Log'].insert(0, entry)
+
+        # Build formatted string with colors
+        tc = self.LOG_COLORS['time']
+        ec = self.LOG_COLORS.get(event, (255, 255, 255))
+        dc = self.LOG_COLORS['data']
+
+        # Format data as "key: value" pairs
+        data_str = ', '.join(f'{k}: {v}' for k, v in data.items())
+
+        # Pad event name to 18 chars (length of "TransitionComplete")
+        event_padded = f"{event:<18}"
+
+        formatted = (
+            f"{{#color({tc[0]}, {tc[1]}, {tc[2]});}}{time_str}  "
+            f"{{#color({ec[0]}, {ec[1]}, {ec[2]});}}{event_padded}  "
+            f"{{#color({dc[0]}, {dc[1]}, {dc[2]});}}{data_str}"
+        )
+        self.stored['LogFormatted'].insert(0, formatted)
+
+        # Keep only the first 20 entries (newest)
+        if len(self.stored['Log']) > 20:
+            self.stored['Log'] = self.stored['Log'][:20]
+        if len(self.stored['LogFormatted']) > 20:
+            self.stored['LogFormatted'] = self.stored['LogFormatted'][:20]
+
+    def ClearLog(self):
+        """Clear all log entries."""
+        self.stored['Log'].clear()
+        self.stored['LogFormatted'].clear()
+
+    def InitData(self):
+        """Reset to clean state - delete all sources and create one new default source."""
+        # Clear all sources
+        self.stored['Sources'] = []
+
+        # Clear pending queue and reset transition state
+        self.pendingQueue.clear()
+        self.transitionState = TransitionState.IDLE
+
+        # Create one default source
+        source = self._getSourceTemplate('defaultSource')
+        source['Settings']['Name'] = 'Source 0'
+        self.stored['Sources'].append(source)
+
+        # Reset selection and active source
+        self.stored['SelectedSource']['index'] = 0
+        self.stored['SelectedSource']['name'] = 'Source 0'
+        self.stored['ActiveSource']['index'] = 0
+        self.stored['ActiveSource']['name'] = 'Source 0'
+        self.stored['State'] = 0
+
+        # Update the source list and UI
+        self._updateSourceList()
+        self.UpdateSelectedSourceComp()
+
+        self._log('Init', {'method': 'InitData'})
 
     def _updateSourceList(self):
         source_list = [str(s['Settings']['Name']) for s in self.stored['Sources']]
@@ -169,24 +299,24 @@ class SourcererLite:
                 vid = source_data['TOP']['Cuetop']
                 op(vid).par.cuepulse.pulse()
 
-        # set the transition (lite version: GLSL only - Fade, Fade Color, Slide)
+        # set the transition
         settings = source_data['Settings']
         tcomp_par = self.transitionComp.par
 
-        glsl_trans = settings['Glsltransition']
-        tcomp_par.Glsltransition = glsl_trans
+        trans_type = settings['Transitiontype']
+        tcomp_par.Transitiontype = trans_type
 
-        # Only 3 transitions supported in lite version
-        glsl_transitions = {
-            'Fade': [],
-            'Fade Color': ['Fadecolor'],
-            'Slide': ['Slidedirection']
-        }
-        if glsl_trans in glsl_transitions:
-            transition_pars = glsl_transitions[glsl_trans]
-            for p in transition_pars:
-                val = source_data['GLSL Transition'][p]
-                self._setParVal(p, val, self.transitionComp)
+        # Set transition-specific parameters
+        if trans_type == 'dip':
+            # Dipcolor is a color parameter (r/g/b/a suffixes)
+            self._setParVal('Dipcolor', settings['Dipcolor'], self.transitionComp)
+        elif trans_type in ('slide', 'wipe'):
+            tcomp_par.Transitiondirection = settings['Transitiondirection']
+        elif trans_type == 'file':
+            tcomp_par.Transitionfile = settings['Transitionfile']
+        elif trans_type == 'top':
+            tcomp_par.Transitiontop = settings['Transitiontop']
+        # dissolve and blur have no extra parameters
 
         # set the transition time
         if settings['Useglobaltransitiontime']:
@@ -203,27 +333,43 @@ class SourcererLite:
 
         # update the stored information
         self.stored['State'] = next_state
-        self.stored['ActiveSource'] = {
+        self.stored['ActiveSource']['index'] = index
+        self.stored['ActiveSource']['name'] = name
+
+        self.DoCallback('onSwitchToSource', {
             'index': index,
             'name': name,
             'source': source_data
-        }
+        })
 
-        try:
-            self.ownerComp.mod.callbacks.onSwitchToSource(index, name, source_data)
-        except Exception as e:
-            debug('switch to source callback error')
-            debug(e)
+        self._log('SwitchToSource', {'index': index, 'name': name})
 
     def OnTransitionComplete(self):
         """Called when the transition animation finishes.
         Hook this up to be called when the transition timer/animation ends."""
         self.transitionState = TransitionState.IDLE
 
+        self.DoCallback('onTransitionComplete', {
+            'index': self.activeIndex,
+            'name': self.activeName
+        })
+
+        self._log('TransitionComplete', {'index': self.activeIndex, 'name': self.activeName})
+
         # Process next item in queue if any
         if self.pendingQueue:
             next_source = self.pendingQueue.pop(0)
             self.SwitchToSource(next_source)
+
+    def OnSourceDone(self):
+        """Called when the current source finishes (timer ends, video ends, etc.).
+        Hook this up to source timer/video completion events."""
+        self.DoCallback('onSourceDone', {
+            'index': self.activeIndex,
+            'name': self.activeName
+        })
+
+        self._log('SourceDone', {'index': self.activeIndex, 'name': self.activeName})
 
     def ClearPendingQueue(self):
         """Clear all pending source switches."""
@@ -237,15 +383,14 @@ class SourcererLite:
             self.pendingQueue.append(last)
 
     def SwitchToSelectedSource(self):
-        s = self.stored['SelectedSource']
+        s = self.stored['SelectedSource']['index']
         self.SwitchToSource(s)
 
     def DelaySwitchToSource(self, source, delay=0):
-        self.ownerComp.op('delaySwitchToSource').run(source, delayMilliSeconds=delay)
+        run(self.SwitchToSource, source, delayFrames=delay)
 
     def RunCommand(self, command):
-        self.ownerComp.op('commandScript').text = command
-        self.ownerComp.op('commandScript').run(delayFrames=1)
+        run(command)
 
     # SOURCES
     def Import(self):
@@ -268,18 +413,18 @@ class SourcererLite:
                         self.stored['Sources'] = new_sources
 
                         for i in range(0, len(imported_sources)):
-                            self._checkUniqueName(self.stored['Sources'][i], count=1)
+                            self._checkUniqueName(self.stored['Sources'][i], exclude_index=i)
 
                     # insert
                     elif a == 1:
-                        s = self.stored['SelectedSource']
+                        s = self.stored['SelectedSource']['index']
                         new_sources = sources[:s].copy()
                         new_sources.extend(imported_sources)
                         new_sources.extend(sources[s:].copy())
                         self.stored['Sources'] = new_sources
 
                         for i in range(s, s + len(imported_sources)):
-                            self._checkUniqueName(self.stored['Sources'][i], count=1)
+                            self._checkUniqueName(self.stored['Sources'][i], exclude_index=i)
 
                     # append
                     elif a == 2:
@@ -288,7 +433,7 @@ class SourcererLite:
                         self.stored['Sources'] = new_sources
 
                         for i in range(len(sources), len(new_sources)):
-                            self._checkUniqueName(self.stored['Sources'][i], count=1)
+                            self._checkUniqueName(self.stored['Sources'][i], exclude_index=i)
                     self._updateSourceList()
         return
 
@@ -306,7 +451,7 @@ class SourcererLite:
         f = ui.chooseFile(load=False, fileTypes=['json'], title='Export Sources')
 
         if f is not None:
-            selected_source = self.stored['SelectedSource']
+            selected_source = self.stored['SelectedSource']['index']
             sources = [self.stored['Sources'][selected_source].getRaw()]
 
             with open(f, 'w') as json_file:
@@ -335,17 +480,43 @@ class SourcererLite:
         self.stored['Sources'] = []
 
         # set the selected source to 0
-        self.stored['SelectedSource'] = 0
+        self.stored['SelectedSource']['index'] = 0
+        self.stored['SelectedSource']['name'] = ''
 
         # add a default source
         self.AddSource()
         self._updateSourceList()
+
+        self._log('Init', {'method': 'InitSources'})
         return
 
     def _getSourceTemplate(self, template):
         """Get a source template as a simple value dictionary from a template component."""
         template_op = self.ownerComp.op(template)
         return self._extractValues(template_op)
+
+    def StoreDefaultFromSelected(self):
+        """Store the selected source's settings as the default template."""
+        # Get the selected source data
+        idx = self.stored['SelectedSource']['index']
+        name = self.stored['SelectedSource']['name']
+        source_data = self.stored['Sources'][idx]
+
+        # Get the default template component
+        default_comp = self.ownerComp.op('defaultSource')
+
+        # Write all parameter values to the default template
+        for page_name, page_data in source_data.items():
+            for par_name, value in page_data.items():
+                self._setParVal(par_name, value, default_comp)
+
+        self._log('StoreDefault', {'index': idx, 'name': name})
+
+    # Suffix patterns for multi-value parameters that don't have a base accessor
+    PAR_SUFFIXES = {
+        'r': ['r', 'g', 'b'],      # Color parameters
+        'x': ['x', 'y'],           # Translate, Scale, etc.
+    }
 
     def _setParVal(self, par_name, value, target_comp):
         """Set a parameter value directly on a component."""
@@ -358,6 +529,14 @@ class SourcererLite:
                         p.val = value[i]
             else:
                 par.val = value
+        else:
+            # Check for suffix-based parameters (color, xy, etc.)
+            for first_suffix, suffixes in self.PAR_SUFFIXES.items():
+                if hasattr(target_comp.par, par_name + first_suffix):
+                    for i, suffix in enumerate(suffixes):
+                        if i < len(value):
+                            getattr(target_comp.par, par_name + suffix).val = value[i]
+                    break
 
     def _extractValues(self, comp):
         """Extract parameter values from a component as a simple dictionary."""
@@ -377,8 +556,8 @@ class SourcererLite:
         return source_dict
 
     def UpdateSelectedSourceComp(self):
-        # get the selected source
-        s = self.stored['SelectedSource']
+        # get the selected source index
+        s = self.stored['SelectedSource']['index']
 
         # update the source comp
         self.UpdateSourceCompQuick(self.selectedSourceComp, s, active=False, store_changes=True)
@@ -422,13 +601,19 @@ class SourcererLite:
         return
 
     def StoreSourceToSelected(self, source_comp, update_selected_comp=False):
-        # get the selected source
-        source = self.stored['SelectedSource']
+        # get the selected source index
+        source = self.stored['SelectedSource']['index']
 
         self.StoreSource(source_comp, source)
 
         if update_selected_comp:
             self.UpdateSelectedSourceComp()
+
+        # if we're editing the active source, update the active source comp in real-time
+        if source == self.activeIndex:
+            active_comp = self.ownerComp.op('source' + str(self.stored['State']))
+            self.UpdateSourceCompQuick(active_comp, source, active=True, store_changes=False)
+
         self._updateSourceList()
         return
 
@@ -442,63 +627,73 @@ class SourcererLite:
         # get the default source template
         source_dict = self._getSourceTemplate('defaultSource')
 
-        # get the selected source
-        s = self.stored['SelectedSource']
+        # get the selected source index
+        s = self.stored['SelectedSource']['index']
 
         # store to the selected source
         self.stored['Sources'][s] = source_dict
         self._updateSourceList()
         return
 
-    def _checkUniqueName(self, source, count=0):
-        names = [s['Settings']['Name'] for s in self.stored['Sources']]
+    def _getUniqueName(self, name, exclude_index=None):
+        """Get a unique name, optionally excluding an index (for renames)."""
+        names = [s['Settings']['Name'] for i, s in enumerate(self.stored['Sources'])
+                 if i != exclude_index]
 
-        orig_name = str(source['Settings']['Name'])
+        if name not in names:
+            return name
 
-        if names.count(orig_name) > count:
-            name = orig_name
-            i = 0
-            while name in names:
-                name = name.rstrip('0123456789')
-                name = name + str(i)
-                i += 1
+        # Find next available number suffix
+        base = name.rstrip('0123456789 ')
+        i = 1
+        while f"{base} {i}" in names:
+            i += 1
+        return f"{base} {i}"
 
-            if orig_name != name:
-                source['Settings']['Name'] = name
+    def _checkUniqueName(self, source, exclude_index=None):
+        """Ensure source has a unique name. Returns the modified source."""
+        name = str(source['Settings']['Name'])
+        source['Settings']['Name'] = self._getUniqueName(name, exclude_index)
         self._updateSourceList()
         return source
 
     def AddSource(self, source_type=None, source_path=None, source_name=None):
-        # get the selected source
-        s = self.stored['SelectedSource']
+        # get the selected source index
+        s = self.stored['SelectedSource']['index']
 
-        # get the appropriate template
-        if source_type is None:
-            source = self._getSourceTemplate('defaultSource')
+        # always use the default template
+        source = self._getSourceTemplate('defaultSource')
 
-        elif source_type == 'file':
-            source = self._getSourceTemplate('fileSource')
+        # set the source type and path if provided
+        if source_type == 'file':
+            source['Settings']['Sourcetype'] = 'file'
             if source_path is not None:
                 source['File']['File'] = source_path
 
         elif source_type == 'top':
-            source = self._getSourceTemplate('topSource')
+            source['Settings']['Sourcetype'] = 'top'
             if source_path is not None:
                 source['TOP']['Top'] = source_path
 
-        if source_name is not None:
-            source['Settings']['Name'] = source_name
+        # source_type=None leaves Sourcetype at its default value (likely 'none')
+
+        # set the name - use provided name or default to "Source"
+        source['Settings']['Name'] = source_name if source_name is not None else 'new_source'
 
         source = self._checkUniqueName(source)
 
         # insert the template into the sources list
-        self.stored['Sources'].insert(s+1, source)
+        # handle empty list case - insert at 0 instead of s+1
+        insert_index = s + 1 if self.stored['Sources'] else 0
+        self.stored['Sources'].insert(insert_index, source)
 
-        self.SelectSource(s+1)
+        self.SelectSource(insert_index)
 
         # update the source comp parameters
-        self.UpdateSourceCompQuick(self.selectedSourceComp, s+1, store_changes=True)
+        self.UpdateSourceCompQuick(self.selectedSourceComp, insert_index, store_changes=True)
         self._updateSourceList()
+
+        self._log('AddSource', {'index': insert_index, 'name': source['Settings']['Name']})
         return
 
     def _DropSource(self, args):
@@ -532,8 +727,8 @@ class SourcererLite:
         return
 
     def CopySource(self):
-        # get the selected source
-        s = self.stored['SelectedSource']
+        # get the selected source index
+        s = self.stored['SelectedSource']['index']
 
         # get a copy of the source (deep copy to avoid reference issues)
         source = json.loads(json.dumps(self.stored['Sources'][s]))
@@ -553,22 +748,24 @@ class SourcererLite:
         if self.stored['Safety']:
             return
 
-        # get the selected source
-        s = self.stored['SelectedSource']
+        # get the selected source index
+        s = self.stored['SelectedSource']['index']
         # get the list of sources
         a = self.stored['Sources']
 
         if len(a) > 1:
-            # Check if we're deleting the active/live source
+            # Capture name before deletion for logging
             deleted_name = a[s]['Settings']['Name']
-            is_active = (self.stored['ActiveSource']['name'] == deleted_name)
+            # Check if we're deleting the active source
+            is_active = (self.stored['ActiveSource']['index'] == s)
 
             # pop the source from the list
             a.pop(s)
 
             # If we deleted the active source, clear ActiveSource
             if is_active:
-                self.stored['ActiveSource'] = {'index': -1, 'name': ''}
+                self.stored['ActiveSource']['index'] = -1
+                self.stored['ActiveSource']['name'] = ''
 
             # Update ActiveSource index if it was after the deleted source
             elif self.stored['ActiveSource']['index'] > s:
@@ -579,6 +776,8 @@ class SourcererLite:
                 self.SelectSource(len(a) - 1)
             else:
                 self.SelectSource(s)
+
+            self._log('DeleteSource', {'index': s, 'name': deleted_name})
         self._updateSourceList()
         return
 
@@ -589,31 +788,26 @@ class SourcererLite:
             return
 
         if 0 <= index < len(self.stored['Sources']):
-            # Get old name to check if this is the live source
+            # Capture old name for logging
             old_name = self.stored['Sources'][index]['Settings']['Name']
 
-            # Check for unique name
-            names = [s['Settings']['Name'] for s in self.stored['Sources']]
-            name = str(new_name)
-
-            # Remove current name from check
-            names.pop(index)
-
-            # Make unique if needed
-            orig_name = name
-            i = 0
-            while name in names:
-                name = orig_name.rstrip('0123456789') + str(i)
-                i += 1
+            # Get unique name, excluding current index from check
+            name = self._getUniqueName(str(new_name), exclude_index=index)
 
             self.stored['Sources'][index]['Settings']['Name'] = name
 
-            # Update ActiveSource name if we renamed the live source
-            if self.stored['ActiveSource']['name'] == old_name:
+            # Update SelectedSource name if we renamed the selected source
+            if self.stored['SelectedSource']['index'] == index:
+                self.stored['SelectedSource']['name'] = name
+
+            # Update ActiveSource name if we renamed the active source
+            if self.stored['ActiveSource']['index'] == index:
                 self.stored['ActiveSource']['name'] = name
 
             self._updateSourceList()
             self.UpdateSelectedSourceComp()
+
+            self._log('RenameSource', {'index': index, 'from': old_name, 'to': name})
         return
 
     def MoveSource(self, from_index, to_index):
@@ -637,6 +831,7 @@ class SourcererLite:
 
         # Get the source to move
         source = sources.pop(from_index)
+        moved_name = source['Settings']['Name']
 
         # Adjust to_index if we removed from before it
         if from_index < to_index:
@@ -659,9 +854,12 @@ class SourcererLite:
                 self.stored['ActiveSource']['index'] += 1
 
         # Update selection to follow the moved item
-        self.stored['SelectedSource'] = to_index
+        self.stored['SelectedSource']['index'] = to_index
+        self.stored['SelectedSource']['name'] = moved_name
         self._updateSourceList()
         self.UpdateSelectedSourceComp()
+
+        self._log('MoveSource', {'name': moved_name, 'from': from_index, 'to': to_index})
         return
 
     def CopySourceData(self, index):
@@ -700,15 +898,19 @@ class SourcererLite:
             index = index - 1
 
         # set the selected source
-        self.stored['SelectedSource'] = index
+        self.stored['SelectedSource']['index'] = index
+        if 0 <= index < len(self.stored['Sources']):
+            self.stored['SelectedSource']['name'] = self.stored['Sources'][index]['Settings']['Name']
+        else:
+            self.stored['SelectedSource']['name'] = ''
 
         # update the sources comp
         self.UpdateSelectedSourceComp()
         return
 
     def SelectSourceUp(self):
-        # get the selected source
-        s = self.stored['SelectedSource']
+        # get the selected source index
+        s = self.stored['SelectedSource']['index']
 
         # select a source up if it exists
         if(s > 0):
@@ -716,8 +918,8 @@ class SourcererLite:
         return
 
     def SelectSourceDown(self):
-        # get the selected source
-        s = self.stored['SelectedSource']
+        # get the selected source index
+        s = self.stored['SelectedSource']['index']
 
         # get a list of sources
         a = self.stored['Sources']
@@ -732,8 +934,8 @@ class SourcererLite:
         if self.stored['Safety']:
             return
 
-        # get the selected source
-        s = self.stored['SelectedSource']
+        # get the selected source index
+        s = self.stored['SelectedSource']['index']
 
         # check if the selected source can go up
         if(s > 0):
@@ -756,8 +958,8 @@ class SourcererLite:
         if self.stored['Safety']:
             return
 
-        # get the selected source
-        s = self.stored['SelectedSource']
+        # get the selected source index
+        s = self.stored['SelectedSource']['index']
 
         # get the sources list
         a = self.stored['Sources']
@@ -777,3 +979,23 @@ class SourcererLite:
             self.SelectSourceDown()
         self._updateSourceList()
         return
+
+
+    # pulse parameter to open extension
+    def pulse_Editextension(self):
+        self.ownerComp.op('SourcererLite').par.edit.pulse()
+
+    def pulse_Import(self):
+        self.Import()
+
+    def pulse_Exportall(self):
+        self.ExportAll()
+
+    def pulse_Exportselected(self):
+        self.ExportSelected()
+
+    def pulse_Exportrange(self):
+        self.ExportRange()
+
+    def pulse_Initsources(self):
+        self.InitSources()

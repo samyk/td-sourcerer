@@ -6,7 +6,7 @@ class SourcererList:
     # Hardcoded color scheme (dark theme)
     COLORS = {
         # Label/Header
-        'label_bg': (0.15, 0.15, 0.15, 1),
+        'label_bg': (0.125, 0.125, 0.125, 1),
         'label_font': (0.7, 0.7, 0.7, 1),
 
         # Cell backgrounds
@@ -75,9 +75,9 @@ class SourcererList:
         """Get currently selected source index."""
         return ext.SOURCERER.selectedIndex
 
-    def getLiveSourceName(self):
-        """Get the name of the currently live/active source."""
-        return ext.SOURCERER.liveName
+    def getActiveName(self):
+        """Get the name of the currently active source."""
+        return ext.SOURCERER.activeName
 
     def getSafety(self):
         """Get safety state - when True, modifications are blocked."""
@@ -172,24 +172,24 @@ class SourcererList:
             return
 
         selected = self.getSelectedIndex()
-        live_name = self.getLiveSourceName()
+        active_name = self.getActiveName()
 
         # Handle current row hover
         if row is not None and row > 0 and row != prevRow:
             source_index = row - 1
             is_selected = (source_index == selected)
-            is_live = (source_index < len(names) and names[source_index] == live_name)
+            is_active = (source_index < len(names) and names[source_index] == active_name)
 
             rowAttribs = comp.rowAttribs[row]
 
             if is_selected:
-                if is_live:
+                if is_active:
                     rowAttribs.bgColor = self.COLORS['cell_bg_live_active_hover']
                 else:
                     rowAttribs.bgColor = self.COLORS['cell_bg_active_hover']
                 rowAttribs.textColor = self.COLORS['cell_font_active_hover']
             else:
-                if is_live:
+                if is_active:
                     rowAttribs.bgColor = self.COLORS['cell_bg_live_hover']
                 else:
                     rowAttribs.bgColor = self.COLORS['cell_bg_hover']
@@ -199,18 +199,18 @@ class SourcererList:
         if prevRow is not None and prevRow > 0 and row != prevRow:
             source_index = prevRow - 1
             is_selected = (source_index == selected)
-            is_live = (source_index < len(names) and names[source_index] == live_name)
+            is_active = (source_index < len(names) and names[source_index] == active_name)
 
             prevRowAttribs = comp.rowAttribs[prevRow]
 
             if is_selected:
-                if is_live:
+                if is_active:
                     prevRowAttribs.bgColor = self.COLORS['cell_bg_live_active']
                 else:
                     prevRowAttribs.bgColor = self.COLORS['cell_bg_active']
                 prevRowAttribs.textColor = self.COLORS['cell_font_active']
             else:
-                if is_live:
+                if is_active:
                     prevRowAttribs.bgColor = self.COLORS['cell_bg_live']
                 else:
                     prevRowAttribs.bgColor = self.COLORS['cell_bg']
@@ -356,19 +356,19 @@ class SourcererList:
         # Reset colors based on state
         source_index = row - 1
         selected = self.getSelectedIndex()
-        live_name = self.getLiveSourceName()
+        active_name = self.getActiveName()
 
         is_selected = (source_index == selected)
-        is_live = (names[source_index] == live_name)
+        is_active = (names[source_index] == active_name)
 
         if is_selected:
             rowAttribs.fontBold = True
             rowAttribs.textColor = self.COLORS['cell_font_active']
-            if is_live:
+            if is_active:
                 rowAttribs.bgColor = self.COLORS['cell_bg_live_active']
             else:
                 rowAttribs.bgColor = self.COLORS['cell_bg_active']
-        elif is_live:
+        elif is_active:
             rowAttribs.fontBold = False
             rowAttribs.textColor = self.COLORS['cell_font']
             rowAttribs.bgColor = self.COLORS['cell_bg_live']

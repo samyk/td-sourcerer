@@ -1,286 +1,97 @@
-# Author: Matthew Wachter
-# License: MIT
+from json import loads, dumps
+import traceback
 
+from CallbacksExt import CallbacksExt
+from TDStoreTools import StorageManager
+TDF = op.TDModules.mod.TDFunctions
 
-class Source:
+class Source(CallbacksExt):
+    """ A source playback component """
+
     def __init__(self, ownerComp):
+        # the component to which this extension is attached
         self.ownerComp = ownerComp
-        self.parPages = ownerComp.customPages
-        self.parPageNames = [p.name for p in self.parPages]
-        self.glslTransPars = {
-            'Blinds': ['Blindsnum'],
-            'Blood': ['Seed'],
-            'Circle_Reveal': ['Circlerevealfuzzy'],
-            'Color_Burn': ['Colorburncolor'],
-            'Color_Distance': ['Colordistancepower'],
-            'Cube_Left': ['Cubeperspective', 'Cubeunzoom'],
-            'Cube_Right': ['Cubeperspective', 'Cubeunzoom'],
-            'Dissolve': ['Seed'],
-            'Fade_Color': ['Fadecolor'],
-            'Linear Blur': ['Linearblurintensity', 'Linearblurpasses'],
-            'Maximum': ['Maximumdistance', 'Maximumfadeindistance'],
-            'Morph1': ['Morph1strength'],
-            'Perlin': ['Perlinscale', 'Seed', 'Perlinsmoothness'],
-            'Pixelize': ['Pixelizesquaresmin'],
-            'Radial_Blur': ['Radialblurcenter'],
-            'Random_Squares': ['Randomsquaressize', 'Randomsquaressmoothness'],
-            'Ripple': ['Rippleamplitude', 'Ripplecenter', 'Ripplefrequency', 'Ripplespeed'],
-            'Slide': ['Slidedirection'],
-            'Swap_Left': ['Swapperspective', 'Swapdepth'],
-            'Swap_Right': ['Swapperspective', 'Swapdepth']
-        }
 
-    def SaveChanges(self):
-        return
+        # init callbacks
+        self.callbackDat = self.ownerComp.par.Callbackdat.eval()
+        try:
+            CallbacksExt.__init__(self, ownerComp)
+        except:
+            self.ownerComp.addScriptError(traceback.format_exc() + \
+                    "Error in CallbacksExt __init__. See textport.")
+            print()
+            print("Error initializing callbacks - " + self.ownerComp.path)
+            print(traceback.format_exc())
+        # run onInit callback
+        try:
+            self.DoCallback('onInit', {'ownerComp':self.ownerComp})
+        except:
+            self.ownerComp.addScriptError(traceback.format_exc() + \
+                    "Error in custom onInit callback. See textport.")
+            print(traceback.format_exc())
 
-    # PARAMETER CHANGES
 
-    def _HandleParChange(self, par):
-        if hasattr(self, par.name):
-            getattr(self, par.name)(par)
 
-    # change source type
-    def Sourcetype(self, par):
-        if par.val == 'top':
-            self._enableSourceTypeTOP()
-        elif par.val == 'file':
-            self._enableSourceTypeFile()
+        # the component to which data is stored
+        self.dataComp = ownerComp.op('data')
 
-    def Cuepulse(self, par):
-        self.ownerComp.op('moviefilein1').par.cuepulse.pulse()
+        # stored items (persistent across saves and re-initialization):
+        storedItems = [
+            # Only 'name' is required...
+            {'name': 'Data', 'default': None, 'readOnly': False,
+                                     'property': True, 'dependable': True},
+        ]
+        self.stored = StorageManager(self, self.dataComp, storedItems)
 
-    def Commandpulse(self, par):
-        parent.SOURCERER.op('commandScript').text = parent().par.Command
-        parent.SOURCERER.op('commandScript').run()
+        self.movieFileIn = self.ownerComp.op('moviefilein')
+        self.loops = 0  # track loops for file source
 
-    def Deinterlace(self, par):
-        if str(par) == 'off':
-            self.ownerComp.par.Fieldprecedence.enable = False
+        self.timerFile = self.ownerComp.op('timerFile')
+        self.timerTOP = self.ownerComp.op('timerTOP')
+
+    def Start(self):
+        self.loops = 0
+        source_type = str(self.ownerComp.par.Sourcetype)
+        if source_type == 'file':
+            self.movieFileIn.par.reload.pulse()
+            done_on = self.ownerComp.par.Doneonfile.eval()
+            if done_on == 'timer':
+                self.timerFile.par.initialize.pulse()
+                run(self.timerFile.par.start.pulse, delayFrames=1)
+            pass
+        elif source_type == 'top':
+            done_on = self.ownerComp.par.Doneontop.eval()
+            if done_on == 'timer':
+                self.timerTOP.par.initialize.pulse()
+                run(self.timerTOP.par.start.pulse, delayFrames=1)
+
+            cue_vid = self.ownerComp.par.Enablecuetop.eval()
+            if cue_vid:
+                vid = self.ownerComp.par.Cuetop.eval()
+                op(vid).par.cuepulse.pulse()
         else:
-            self.ownerComp.par.Fieldprecedence.enable = True
-
-    def Doneonfile(self, par):
-        done_on = str(par)
-        if done_on == 'none':
-            self.ownerComp.par.Playntimes.enable = False
-            self.ownerComp.par.Timertimefile.enable = False
-            self.ownerComp.par.Chopfile.enable = False
-        elif done_on == 'play_n_times':
-            self.ownerComp.par.Playntimes.enable = True
-            self.ownerComp.par.Timertimefile.enable = False
-            self.ownerComp.par.Chopfile.enable = False
-        elif done_on == 'timer':
-            self.ownerComp.par.Playntimes.enable = False
-            self.ownerComp.par.Timertimefile.enable = True
-            self.ownerComp.par.Chopfile.enable = False
-        elif done_on == 'chop':
-            self.ownerComp.par.Playntimes.enable = False
-            self.ownerComp.par.Timertimefile.enable = False
-            self.ownerComp.par.Chopfile.enable = True
-
-    def Followactionfile(self, par):
-        follow_action = str(par)
-        if follow_action in ['none', 'play_next']:
-            self.ownerComp.par.Gotoindexfile.enable = False
-            self.ownerComp.par.Gotonamefile.enable = False
-        elif follow_action == 'goto_index':
-            self.ownerComp.par.Gotoindexfile.enable = True
-            self.ownerComp.par.Gotonamefile.enable = False
-        elif follow_action == 'goto_name':
-            self.ownerComp.par.Gotoindexfile.enable = False
-            self.ownerComp.par.Gotonamefile.enable = True
-
-    def Doneontop(self, par):
-        done_on = str(par)
-
-        if done_on == 'none':
-            self.ownerComp.par.Timertimetop.enable = False
-            self.ownerComp.par.Choptop.enable = False
-        elif done_on == 'timer':
-            self.ownerComp.par.Timertimetop.enable = True
-            self.ownerComp.par.Choptop.enable = False
-        elif done_on == 'chop':
-            self.ownerComp.par.Timertimetop.enable = False
-            self.ownerComp.par.Choptop.enable = True
-
-    def Followactiontop(self, par):
-        follow_action = str(par)
-        if follow_action in ['none', 'play_next']:
-            self.ownerComp.par.Gotoindextop.enable = False
-            self.ownerComp.par.Gotonametop.enable = False
-        elif follow_action == 'goto_index':
-            self.ownerComp.par.Gotoindextop.enable = True
-            self.ownerComp.par.Gotonametop.enable = False
-        elif follow_action == 'goto_name':
-            self.ownerComp.par.Gotoindextop.enable = False
-            self.ownerComp.par.Gotonametop.enable = True
-
-    def Name(self, par):
-        names = [ext.SOURCERER._getParVal(s['Settings']['Name']) for s in ext.SOURCERER.Sources]
-
-        name = str(par.val)
-        i = 0
-        while name in names:
-            name = name.rstrip('0123456789')
-            name = name + str(i)
-            i += 1
-
-        if par.val != name:
-            par.val = name
-
-        if self.ownerComp.par.Storechanges.val:
-            ext.SOURCERER.StoreSourceToSelected(self.ownerComp)
-
-    def Transitionprogressshape(self, par):
-        if par.val == 'custom':
-            self.ownerComp.par.Customtransitionshape.enable = True
-        else:
-            self.ownerComp.par.Customtransitionshape.enable = False
-
-    def Transitiontype(self, par):
-        glsl = False
-        file = False
-        top = False
-
-        if par.val == 'glsl':
-            glsl = True
-        elif par.val == 'file':
-            file = True
-        elif par.val == 'top':
-            top = True
-
-        self.ownerComp.par.Glsltransition.enable = glsl
-        self._updateGLSLPars()
-        self.ownerComp.par.Transitionfile.enable = file
-        self.ownerComp.par.Transitiontop.enable = top
-
-    def Glsltransition(self, par):
-        self._updateGLSLPars()
-        return
-
-    def _updateGLSLPars(self):
-        for p in self.ownerComp.customPages[1]:
-            p.enable = False
-
-        trans_type = self.ownerComp.par.Transitiontype
-
-        if trans_type == 'glsl':
-            glsl_trans = str(self.ownerComp.par.Glsltransition)
-
-            if glsl_trans in self.glslTransPars.keys():
-                par_names = self.glslTransPars[glsl_trans]
-
-                for p_name in par_names:
-                    for p in self.ownerComp.pars(p_name + '*'):
-                        p.enable = True
-
-    def Useglobaltransitiontime(self, par):
-        self.ownerComp.par.Transitiontime.enable = not par.val
-
-    def _enableSourceTypeFile(self):
-        file_pars = self.parPages[self.parPageNames.index('File')]
-
-        for p in file_pars:
-            p.enable = True
-
-        top_pars = self.parPages[self.parPageNames.index('TOP')]
-
-        for p in top_pars:
-            p.enable = False
-
-        # set enable state for field precedence
-        deinterlace = self.ownerComp.par.Deinterlace
-        if deinterlace != 'none':
-            self.ownerComp.par.Fieldprecedence.enable = True
-        else:
-            self.ownerComp.par.Fieldprecedence.enable = False
-
-        # set enable states for 'done on' parameters
-        done_on = self.ownerComp.par.Doneonfile
-        if done_on == 'none':
-            self.ownerComp.par.Playntimes.enable = False
-            self.ownerComp.par.Timertimefile.enable = False
-            self.ownerComp.par.Chopfile.enable = False
-        elif done_on == 'play_n_times':
-            self.ownerComp.par.Playntimes.enable = True
-            self.ownerComp.par.Timertimefile.enable = False
-            self.ownerComp.par.Chopfile.enable = False
-        elif done_on == 'timer':
-            self.ownerComp.par.Playntimes.enable = False
-            self.ownerComp.par.Timertimefile.enable = True
-            self.ownerComp.par.Chopfile.enable = False
-        elif done_on == 'chop':
-            self.ownerComp.par.Playntimes.enable = False
-            self.ownerComp.par.Timertimefile.enable = False
-            self.ownerComp.par.Chopfile.enable = True
-
-        # set follow action enable states
-        follow_action = self.ownerComp.par.Followactionfile
-        if follow_action in ['none', 'play_next']:
-            self.ownerComp.par.Gotoindexfile.enable = False
-            self.ownerComp.par.Gotonamefile.enable = False
-        elif follow_action == 'goto_index':
-            self.ownerComp.par.Gotoindexfile.enable = True
-            self.ownerComp.par.Gotonamefile.enable = False
-        elif follow_action == 'goto_name':
-            self.ownerComp.par.Gotoindexfile.enable = False
-            self.ownerComp.par.Gotonamefile.enable = True
-        return
-
-    def _enableSourceTypeTOP(self):
-        file_pars = self.parPages[self.parPageNames.index('File')]
-
-        for p in file_pars:
-            p.enable = False
-
-        top_pars = self.parPages[self.parPageNames.index('TOP')]
-
-        for p in top_pars:
-            p.enable = True
-
-        # set enable states for 'done on' parameters
-        done_on = self.ownerComp.par.Doneontop
-        if done_on == 'none':
-            self.ownerComp.par.Timertimetop.enable = False
-            self.ownerComp.par.Choptop.enable = False
-        elif done_on == 'timer':
-            self.ownerComp.par.Timertimetop.enable = True
-            self.ownerComp.par.Choptop.enable = False
-        elif done_on == 'chop':
-            self.ownerComp.par.Timertimetop.enable = False
-            self.ownerComp.par.Choptop.enable = True
-
-        # set follow action enable states
-        follow_action = self.ownerComp.par.Followactionfile
-        if follow_action in ['none', 'play_next']:
-            self.ownerComp.par.Gotoindextop.enable = False
-            self.ownerComp.par.Gotonametop.enable = False
-        elif follow_action == 'goto_index':
-            self.ownerComp.par.Gotoindextop.enable = True
-            self.ownerComp.par.Gotonametop.enable = False
-        elif follow_action == 'goto_name':
-            self.ownerComp.par.Gotoindextop.enable = False
-            self.ownerComp.par.Gotonametop.enable = True
+            pass
         return
 
     def _handleFollowAction(self):
-
+        """Handle follow action when source is done playing."""
         source_type = str(self.ownerComp.par.Sourcetype)
         if source_type == 'file':
             follow_action = self.ownerComp.par.Followactionfile
         elif source_type == 'top':
             follow_action = self.ownerComp.par.Followactiontop
         else:
-            print('_handleFollowAction error:', 'not valid source type', source_type)
             return
 
         if self.ownerComp.par.Active:
             if self.ownerComp.name in ['source0', 'source1']:
                 if self.ownerComp.digits == ext.SOURCERER.State:
+                    # Fire the onSourceDone callback
+                    ext.SOURCERER.OnSourceDone()
+
                     # play next
                     if follow_action == 'play_next':
-                        cur_index = parent.SOURCERER.ActiveSource['index']
-                        parent.SOURCERER.SwitchToSource(cur_index+1)
+                        ext.SOURCERER.SwitchToSource(ext.SOURCERER.activeIndex + 1)
 
                     # go to index
                     elif follow_action == 'goto_index':
@@ -288,8 +99,7 @@ class Source:
                             goto_index = self.ownerComp.par.Gotoindexfile
                         else:
                             goto_index = self.ownerComp.par.Gotoindextop
-
-                        parent.SOURCERER.SwitchToSource(int(goto_index))
+                        ext.SOURCERER.SwitchToSource(int(goto_index))
 
                     # go to name
                     elif follow_action == 'goto_name':
@@ -297,4 +107,52 @@ class Source:
                             goto_name = self.ownerComp.par.Gotonamefile
                         else:
                             goto_name = self.ownerComp.par.Gotonametop
-                        parent.SOURCERER.SwitchToSource(str(goto_name))
+                        ext.SOURCERER.SwitchToSource(str(goto_name))
+    
+    # called whenever a parameter value is changed
+    def onValueChange(self, par, prev):
+        # we should evaluate whether or not to store the source data here
+        # if we are updating the source data (e.g. loading a source) we should not pass up any changes
+        ext.SOURCERER.StoreSourceToSelected(self.ownerComp)
+    
+    def onTimerFileDone(self):
+        """Callback for when file source is done playing."""
+        self._handleFollowAction()
+        return
+
+    def onTimerTOPDone(self):
+        """Callback for when TOP source is done playing."""
+        self._handleFollowAction()
+        return
+
+    def onFileLastFrame(self):
+        """Callback for when file source reaches last frame."""
+        # self._handleFollowAction()
+        # need to consider play n times
+
+        return
+
+    ### Pulse methods ###
+
+    # pulse parameter to cue the movie file in
+    def pulse_Cuepulse(self):
+        """Pulse the cue on the movie file in."""
+        self.ownerComp.op('moviefilein').par.cuepulse.pulse()
+
+    # pulse parameter to execute command script
+    def pulse_Commandpulse(self):
+        """Execute the command script."""
+        parent.SOURCERER.op('commandScript').text = parent().par.Command
+        parent.SOURCERER.op('commandScript').run()
+
+    def pulse_Donepulsefile(self):
+        """Pulse the done pulse for file source."""
+        self._handleFollowAction()
+
+    def pulse_Commandpulsetop(self):
+        """Pulse the done pulse for TOP source."""
+        self._handleFollowAction()
+
+    # pulse parameter to open extension
+    def pulse_Editextension(self):
+        self.ownerComp.op('Source').par.edit.pulse()

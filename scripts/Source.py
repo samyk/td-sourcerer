@@ -226,6 +226,10 @@ class Source(CallbacksExt):
         Note: _currentFrame is a 0-based index, so frame 0 is the first frame
         and frame (totalFrames-1) is the last frame.
         """
+        # Check if display updates are enabled on SOURCERER
+        if not parent.SOURCERER.par.Updatedisplay:
+            return
+
         source_type = str(self.ownerComp.par.Sourcetype)
 
         if source_type == 'file':
@@ -283,13 +287,16 @@ class Source(CallbacksExt):
             self.LoopsRemaining = 'N/A'
 
         else:  # 'none' or manual
-            # No automatic end - show file progress but N/A for time remaining
+            # No automatic end - show single-loop file progress and time remaining
             if self._totalFrames > 1:
                 progress_pct = (self._currentFrame / (self._totalFrames - 1)) * 100
             else:
                 progress_pct = 100.0 if self._totalFrames == 1 else 0.0
             self.Progress = round(progress_pct, 2)
-            self.TimeRemaining = 'N/A'
+
+            # Show time remaining in current loop so user knows when file ends
+            frames_remaining = max(0, self._totalFrames - 1 - self._currentFrame)
+            self.TimeRemaining = self._formatTimecode(frames_remaining, self._sampleRate)
             self.LoopsRemaining = 'N/A'
 
     def _updateTopDisplay(self, done_on):
@@ -529,28 +536,31 @@ class Source(CallbacksExt):
         elif chan_name == 'last_frame':
             # detect rising edge of last_frame for loop counting
             if val == 1.0 and self._lastFrameState == 0:
-                # Check done condition BEFORE incrementing loop count
-                # (we're completing the current loop, not starting a new one)
                 done_on = str(self.ownerComp.par.Doneonfile)
                 play_n_times = int(self.ownerComp.par.Playntimes)
 
+                # Increment loop count first (we've completed a loop)
+                self._loopCount += 1
+                # loopsRemaining decrements: starts at play_n_times-1, goes to 0
+                self._loopsRemaining = max(0, play_n_times - self._loopCount)
+
+                # Check done condition AFTER incrementing loop count
+                # _loopCount now represents completed loops
+                # Trigger done when we've completed play_n_times loops
                 if done_on == 'play_n_times' and not self._doneTriggered:
-                    # _loopCount is 0-indexed: 0 = first play, 1 = second play
-                    # We trigger done when completing the final loop
-                    # If play_n_times=1, we're done after first loop (_loopCount=0)
-                    # If play_n_times=2, we're done after second loop (_loopCount=1)
-                    if self._loopCount >= play_n_times - 1:
+                    if self._loopCount >= play_n_times:
                         self._doneTriggered = True
                         self._handleFollowAction()
 
-                # Now increment loop count for display
-                self._loopCount += 1
-                # loopsRemaining decrements: starts at play_n_times-1, goes to 0
-                self._loopsRemaining = max(0, play_n_times - 1 - self._loopCount)
             self._lastFrameState = val
 
         # update display state
         self._updateDisplayState()
+
+        # Early trigger for transitions: only check on index changes
+        # (not on last_frame, which is handled above)
+        if chan_name != 'index':
+            return
 
         # Early trigger for transitions: check if we're close enough to the end
         # to start the transition early (only for play_n_times mode)
@@ -574,10 +584,14 @@ class Source(CallbacksExt):
         # frames remaining in current loop (0-based index: last frame = totalFrames-1)
         frames_remaining = max(0, self._totalFrames - 1 - self._currentFrame)
 
-        # We're on the final loop when loopCount equals play_n_times - 1
+        # We're on the final loop when loopCount (completed loops) equals play_n_times - 1
+        # (meaning we're currently playing the last loop)
         is_final_loop = (self._loopCount >= play_n_times - 1)
 
-        if is_final_loop and frames_remaining <= transition_frames:
+        # Early trigger: frames_remaining must be > 0 (not at the last frame)
+        # and <= transition_frames. The last frame itself is handled by the
+        # last_frame channel logic, not the early trigger.
+        if is_final_loop and frames_remaining > 0 and frames_remaining <= transition_frames:
             # trigger done early to allow transition to complete
             self._doneTriggered = True
             self._handleFollowAction()

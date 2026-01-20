@@ -3,7 +3,7 @@ import traceback
 
 from CallbacksExt import CallbacksExt
 from TDStoreTools import StorageManager
-TDF = op.TDModules.mod.TDFunctions
+import TDFunctions as TDF
 
 class Source(CallbacksExt):
     """ A source playback component """
@@ -44,13 +44,163 @@ class Source(CallbacksExt):
         self.stored = StorageManager(self, self.dataComp, storedItems)
 
         self.movieFileIn = self.ownerComp.op('moviefilein')
-        self.loops = 0  # track loops for file source
-
         self.timerFile = self.ownerComp.op('timerFile')
         self.timerTOP = self.ownerComp.op('timerTOP')
 
+        # flag to suppress callbacks during bulk parameter updates
+        self._isUpdating = False
+
+        # flag to prevent multiple done triggers during same playthrough
+        self._doneTriggered = False
+
+        # internal file state
+        self._currentFrame = 0
+        self._totalFrames = 0
+        self._sampleRate = 30.0
+        self._lastFrameState = 0  # track last_frame channel for edge detection
+
+        # public display properties with dependency tracking for UI updates
+        TDF.createProperty(self, 'Timecode', value='00:00:00:00', dependable=True, readOnly=False)
+        TDF.createProperty(self, 'TimeRemaining', value='00:00:00:00', dependable=True, readOnly=False)
+        TDF.createProperty(self, 'LoopCount', value=0, dependable=True, readOnly=False)
+        TDF.createProperty(self, 'LoopsRemaining', value=0, dependable=True, readOnly=False)
+        TDF.createProperty(self, 'Progress', value=0.0, dependable=True, readOnly=False)
+
+    # Suffix patterns for multi-value parameters that don't have a base accessor
+    PAR_SUFFIXES = {
+        'r': ['r', 'g', 'b'],      # Color parameters
+        'x': ['x', 'y'],           # Translate, Scale, etc.
+    }
+
+    def _setParVal(self, par_name, value):
+        """Set a parameter value on this component."""
+        if hasattr(self.ownerComp.par, par_name):
+            par = getattr(self.ownerComp.par, par_name)
+            if isinstance(value, (list, tuple)):
+                # Multi-value parameter
+                for i, p in enumerate(par.tuplet):
+                    if i < len(value):
+                        p.val = value[i]
+            else:
+                par.val = value
+        else:
+            # Check for suffix-based parameters (color, xy, etc.)
+            for first_suffix, suffixes in self.PAR_SUFFIXES.items():
+                if hasattr(self.ownerComp.par, par_name + first_suffix):
+                    for i, suffix in enumerate(suffixes):
+                        if i < len(value):
+                            getattr(self.ownerComp.par, par_name + suffix).val = value[i]
+                    break
+
+    def _formatTimecode(self, frames, fps):
+        """Format frame count as timecode string HH:MM:SS:FF"""
+        if fps <= 0:
+            return '00:00:00:00'
+        total_seconds = frames / fps
+        hours = int(total_seconds // 3600)
+        minutes = int((total_seconds % 3600) // 60)
+        seconds = int(total_seconds % 60)
+        frame = int(frames % fps)
+        return f'{hours:02d}:{minutes:02d}:{seconds:02d}:{frame:02d}'
+
+    def _getTransitionTimeForFollowAction(self):
+        """
+        Get the transition time (in seconds) for the target of the current follow action.
+        Returns 0.0 if no transition is needed or target is invalid.
+        """
+        follow_action = str(self.ownerComp.par.Followactionfile)
+
+        if follow_action == 'none':
+            return 0.0
+
+        target_source = None
+        current_index = int(self.ownerComp.par.Index)
+
+        if follow_action == 'play_next':
+            next_index = current_index + 1
+            if next_index < len(ext.SOURCERER.Sources):
+                target_source = ext.SOURCERER.Sources[next_index]
+
+        elif follow_action == 'goto_index':
+            goto_index = int(self.ownerComp.par.Gotoindexfile)
+            if 0 <= goto_index < len(ext.SOURCERER.Sources):
+                target_source = ext.SOURCERER.Sources[goto_index]
+
+        elif follow_action == 'goto_name':
+            goto_name = str(self.ownerComp.par.Gotonamefile)
+            source_data, idx, name = ext.SOURCERER._getSource(goto_name)
+            target_source = source_data
+
+        if target_source is None:
+            return 0.0
+
+        # check if target uses global transition time
+        settings = target_source.get('Settings', {})
+        if settings.get('Useglobaltransitiontime', False):
+            return float(parent.SOURCERER.par.Globaltransitiontime)
+        else:
+            return float(settings.get('Transitiontime', 0.0))
+
+    def _updateDisplayState(self):
+        """Update public display attributes from internal state."""
+        self.Timecode = self._formatTimecode(self._currentFrame, self._sampleRate)
+
+        frames_remaining = max(0, self._totalFrames - self._currentFrame)
+        self.TimeRemaining = self._formatTimecode(frames_remaining, self._sampleRate)
+
+        self.Progress = self._currentFrame / self._totalFrames if self._totalFrames > 0 else 0.0
+
+    def UpdateFromData(self, source_data, active=False, store_changes=False, index=None):
+        """
+        Update this source component from a source data dictionary.
+
+        Args:
+            source_data: Dictionary of {page_name: {par_name: value}}
+            active: Whether this source is actively playing
+            store_changes: Whether parameter changes should be stored back to Sourcerer
+            index: The source index this component represents
+        """
+        self._isUpdating = True
+
+        # set all parameters from source_data
+        for page_name, page_data in source_data.items():
+            for par_name, value in page_data.items():
+                self._setParVal(par_name, value)
+
+        # set control parameters
+        self.ownerComp.par.Storechanges = store_changes
+        self.ownerComp.par.Active = active
+        if index is not None:
+            self.ownerComp.par.Index = index
+
+        self._isUpdating = False
+
+        # handle activation actions (command script, cue TOP)
+        if active:
+            if self.ownerComp.par.Enablecommand:
+                try:
+                    run(str(self.ownerComp.par.Command))
+                except:
+                    pass
+
+            if self.ownerComp.par.Enablecuetop:
+                try:
+                    op(self.ownerComp.par.Cuetop).par.cue.pulse()
+                except:
+                    pass
+
     def Start(self):
-        self.loops = 0
+        # reset playback state
+        self.LoopCount = 0
+        self._doneTriggered = False
+        self._lastFrameState = 0
+        self._currentFrame = 0
+        self._totalFrames = 0
+        self.Progress = 0.0
+        self.Timecode = '00:00:00:00'
+        self.TimeRemaining = '00:00:00:00'
+        self.LoopsRemaining = int(self.ownerComp.par.Playntimes)
+
         source_type = str(self.ownerComp.par.Sourcetype)
         if source_type == 'file':
             self.movieFileIn.par.reload.pulse()
@@ -111,9 +261,79 @@ class Source(CallbacksExt):
     
     # called whenever a parameter value is changed
     def onValueChange(self, par, prev):
-        # we should evaluate whether or not to store the source data here
-        # if we are updating the source data (e.g. loading a source) we should not pass up any changes
+        # don't propagate changes while we're bulk updating from data
+        if self._isUpdating:
+            return
+        # only store if this comp is meant to store changes (e.g. selectedSource)
+        if not self.ownerComp.par.Storechanges:
+            return
         ext.SOURCERER.StoreSourceToSelected(self.ownerComp)
+
+    def onFileValueChange(self, channel, val):
+        """Callback for when file info chop channels change.
+
+        Channels:
+            true_length - file length in frames
+            length - file length in frames adjusted for in/out crop
+            last_frame - 1.0 when last frame is reached
+            index - current frame index
+            sample_rate - sample rate of video file (e.g. 30 or 60)
+        """
+        print('onFileValueChange', channel.name, val)
+        # only process if this is an active playback source
+        if not self.ownerComp.par.Active:
+            return
+
+        # only process for source0/source1 that match current state
+        if self.ownerComp.name not in ['source0', 'source1']:
+            return
+        if self.ownerComp.digits != ext.SOURCERER.State:
+            return
+
+        # update internal state based on channel
+        chan_name = channel.name
+        if chan_name == 'index':
+            self._currentFrame = int(val)
+        elif chan_name == 'length':
+            self._totalFrames = int(val)
+        elif chan_name == 'sample_rate':
+            self._sampleRate = float(val) if val > 0 else 30.0
+        elif chan_name == 'last_frame':
+            # detect rising edge of last_frame for loop counting
+            if val == 1.0 and self._lastFrameState == 0:
+                self.LoopCount += 1
+                play_n_times = int(self.ownerComp.par.Playntimes)
+                self.LoopsRemaining = max(0, play_n_times - self.LoopCount)
+            self._lastFrameState = val
+
+        # update display state
+        self._updateDisplayState()
+
+        # check for done condition (only for play_n_times mode)
+        done_on = str(self.ownerComp.par.Doneonfile)
+        if done_on != 'play_n_times':
+            return
+
+        if self._doneTriggered:
+            return
+
+        # calculate if we should trigger done
+        play_n_times = int(self.ownerComp.par.Playntimes)
+        transition_time = self._getTransitionTimeForFollowAction()
+
+        # convert transition time (seconds) to file frames
+        transition_frames = transition_time * self._sampleRate
+
+        # frames remaining in current loop
+        frames_remaining = self._totalFrames - self._currentFrame
+
+        # check if this is the final loop
+        is_final_loop = (self.LoopCount >= play_n_times - 1)
+
+        if is_final_loop and frames_remaining <= transition_frames:
+            # trigger done early to allow transition to complete
+            self._doneTriggered = True
+            self._handleFollowAction()
     
     def onTimerFileDone(self):
         """Callback for when file source is done playing."""
@@ -123,13 +343,6 @@ class Source(CallbacksExt):
     def onTimerTOPDone(self):
         """Callback for when TOP source is done playing."""
         self._handleFollowAction()
-        return
-
-    def onFileLastFrame(self):
-        """Callback for when file source reaches last frame."""
-        # self._handleFollowAction()
-        # need to consider play n times
-
         return
 
     ### Pulse methods ###
@@ -142,8 +355,7 @@ class Source(CallbacksExt):
     # pulse parameter to execute command script
     def pulse_Commandpulse(self):
         """Execute the command script."""
-        parent.SOURCERER.op('commandScript').text = parent().par.Command
-        parent.SOURCERER.op('commandScript').run()
+        run(str(self.ownerComp.par.Command))
 
     def pulse_Donepulsefile(self):
         """Pulse the done pulse for file source."""

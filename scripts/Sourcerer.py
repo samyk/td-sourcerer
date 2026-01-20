@@ -102,6 +102,11 @@ class Sourcerer(CallbacksExt):
         return self.stored['ActiveSource']['name']
 
     @property
+    def ActiveSourceComp(self):
+        """The currently active source component (source0 or source1)."""
+        return self.ownerComp.op('source' + str(self.stored['State']))
+
+    @property
     def isTransitioning(self):
         """Whether a transition is currently in progress."""
         return self.transitionState == TransitionState.TRANSITIONING
@@ -566,36 +571,9 @@ class Sourcerer(CallbacksExt):
         return
 
     def UpdateSourceCompQuick(self, source_comp, source_index, active=True, store_changes=False):
-        """Fast source update - directly sets parameter values."""
-        # disable the callbacks for changing parameters
-        source_comp.op('parexec1').par.active = False
-
-        # get the source data
+        """Update a source component with data from storage."""
         source_data = self.stored['Sources'][source_index]
-
-        # iterate through pages and parameters, setting values directly
-        for page_name, page_data in source_data.items():
-            for par_name, value in page_data.items():
-                self._setParVal(par_name, value, source_comp)
-
-        # re-enable parameter change callbacks
-        source_comp.op('enable').run(delayFrames=1)
-        source_comp.par.Storechanges = store_changes
-        source_comp.par.Active = active
-        source_comp.par.Index = source_index
-
-        if active:
-            if source_comp.par.Enablecommand:
-                try:
-                    source_comp.op('command').run()
-                except:
-                    pass
-
-            if source_comp.par.Enablecuetop:
-                try:
-                    op(source_comp.par.Cuetop).par.cue.pulse()
-                except:
-                    pass
+        source_comp.UpdateFromData(source_data, active=active, store_changes=store_changes, index=source_index)
 
     def UpdateSourceComp(self, source_comp, source_index, active=True, store_changes=False):
         """Full source update - same as quick in lite version."""

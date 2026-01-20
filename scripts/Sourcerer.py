@@ -125,6 +125,23 @@ class Sourcerer(CallbacksExt):
         """Toggle safety mode on or off."""
         self.stored['Safety'] = not self.stored['Safety']
 
+    def _confirmSafetyAction(self, action_name, force=False):
+        """
+        Prompt user to confirm a destructive action.
+
+        Args:
+            action_name: Name of the action for the dialog
+            force: If True, always prompt regardless of safety mode
+
+        Returns True if action should proceed, False if cancelled.
+        """
+        if not force and not self.stored['Safety']:
+            return True
+        result = ui.messageBox(f'Confirm {action_name}',
+                               f'Are you sure you want to {action_name.lower()}?',
+                               buttons=['OK', 'Cancel'])
+        return result == 0  # 0 = OK, 1 = Cancel
+
     # -------------------------------------------------------------------------
     # Logging
     # -------------------------------------------------------------------------
@@ -233,7 +250,7 @@ class Sourcerer(CallbacksExt):
                 name = source
                 index = s
             else:
-                print('no source', source, 'in', source_names)
+                debug('no source', source, 'in', source_names)
 
         elif isinstance(source, int):
             s = source
@@ -242,10 +259,10 @@ class Sourcerer(CallbacksExt):
                 source_json = self.stored['Sources'][s]
                 name = source_json['Settings']['Name']
             else:
-                print('source index', s, 'is out of range')
+                debug('source index', s, 'is out of range')
 
         else:
-            print('wrong source type', source)
+            debug('wrong source type', source)
 
         return source_json, index, name
 
@@ -482,7 +499,11 @@ class Sourcerer(CallbacksExt):
         return
 
     # set the sources to their initial state
-    def InitSources(self):
+    def InitSources(self, force_confirm=False):
+        # Confirm action (force_confirm=True always prompts)
+        if not self._confirmSafetyAction('Initialize Sources (this will clear all sources)', force=force_confirm):
+            return
+
         # clear the sources list
         self.stored['Sources'] = []
 
@@ -490,8 +511,8 @@ class Sourcerer(CallbacksExt):
         self.stored['SelectedSource']['index'] = 0
         self.stored['SelectedSource']['name'] = ''
 
-        # add a default source
-        self.AddSource()
+        # add a default source (skip safety check since we just confirmed)
+        self._addSourceInternal()
         self._updateSourceList()
 
         self._log('Init', {'method': 'InitSources'})
@@ -545,15 +566,24 @@ class Sourcerer(CallbacksExt):
                             getattr(target_comp.par, par_name + suffix).val = value[i]
                     break
 
+    # Parameters that are derived/read-only and should not be stored
+    EXCLUDE_FROM_STORAGE = {'Filelengthframes', 'Filesamplerate'}
+
     def _extractValues(self, comp):
         """Extract parameter values from a component as a simple dictionary."""
         source_dict = {}
         for page in comp.customPages:
             page_dict = {}
             for par in page.pars:
+                # Skip read-only/derived parameters
+                if par.name in self.EXCLUDE_FROM_STORAGE:
+                    continue
                 # Store just the value, handling tuplets
                 if len(par.tuplet) > 1 and par == par.tuplet[0]:
                     # Multi-value parameter - store as list
+                    # Check tuplet name too
+                    if par.tupletName in self.EXCLUDE_FROM_STORAGE:
+                        continue
                     page_dict[par.tupletName] = [p.val for p in par.tuplet]
                 elif len(par.tuplet) == 1:
                     # Single value parameter
@@ -637,7 +667,8 @@ class Sourcerer(CallbacksExt):
         self._updateSourceList()
         return source
 
-    def AddSource(self, source_type=None, source_path=None, source_name=None):
+    def _addSourceInternal(self, source_type=None, source_path=None, source_name=None):
+        """Internal add source without safety check. Used by InitSources."""
         # get the selected source index
         s = self.stored['SelectedSource']['index']
 
@@ -674,6 +705,12 @@ class Sourcerer(CallbacksExt):
         self._updateSourceList()
 
         self._log('AddSource', {'index': insert_index, 'name': source['Settings']['Name']})
+
+    def AddSource(self, source_type=None, source_path=None, source_name=None):
+        # Confirm if safety is on
+        if not self._confirmSafetyAction('Add Source'):
+            return
+        self._addSourceInternal(source_type, source_path, source_name)
         return
 
     def _DropSource(self, args):
@@ -724,8 +761,8 @@ class Sourcerer(CallbacksExt):
         return
 
     def DeleteSource(self):
-        # Block if safety is on
-        if self.stored['Safety']:
+        # Confirm if safety is on
+        if not self._confirmSafetyAction('Delete Source'):
             return
 
         # get the selected source index
@@ -763,8 +800,8 @@ class Sourcerer(CallbacksExt):
 
     def RenameSource(self, index, new_name):
         """Rename a source at the given index."""
-        # Block if safety is on
-        if self.stored['Safety']:
+        # Confirm if safety is on
+        if not self._confirmSafetyAction('Rename Source'):
             return
 
         if 0 <= index < len(self.stored['Sources']):
@@ -792,8 +829,8 @@ class Sourcerer(CallbacksExt):
 
     def MoveSource(self, from_index, to_index):
         """Move a source from one position to another."""
-        # Block if safety is on
-        if self.stored['Safety']:
+        # Confirm if safety is on
+        if not self._confirmSafetyAction('Move Source'):
             return
 
         sources = self.stored['Sources']
@@ -851,8 +888,8 @@ class Sourcerer(CallbacksExt):
 
     def PasteSourceData(self, index, data):
         """Paste source data after the given index."""
-        # Block if safety is on
-        if self.stored['Safety']:
+        # Confirm if safety is on
+        if not self._confirmSafetyAction('Paste Source'):
             return
 
         if data is None:
@@ -910,8 +947,8 @@ class Sourcerer(CallbacksExt):
         return
 
     def MoveSourceUp(self):
-        # Block if safety is on
-        if self.stored['Safety']:
+        # Confirm if safety is on
+        if not self._confirmSafetyAction('Move Source Up'):
             return
 
         # get the selected source index
@@ -934,8 +971,8 @@ class Sourcerer(CallbacksExt):
         return
 
     def MoveSourceDown(self):
-        # Block if safety is on
-        if self.stored['Safety']:
+        # Confirm if safety is on
+        if not self._confirmSafetyAction('Move Source Down'):
             return
 
         # get the selected source index
@@ -978,4 +1015,4 @@ class Sourcerer(CallbacksExt):
         self.ExportRange()
 
     def pulse_Initsources(self):
-        self.InitSources()
+        self.InitSources(force_confirm=True)

@@ -79,10 +79,6 @@ class SourcererList:
         """Get the name of the currently active source."""
         return ext.SOURCERER.activeName
 
-    def getSafety(self):
-        """Get safety state - when True, modifications are blocked."""
-        return ext.SOURCERER.Safety
-
     def InitData(self):
         """Initialize/rebuild the list data and refresh display.
         Call this when sources change (reorder, rename, add, delete).
@@ -118,12 +114,8 @@ class SourcererList:
                 attribs.text = 'Sources'
             else:
                 attribs.text = names[row - 1]
-                # Only allow editing if safety is off
-                if not self.getSafety():
-                    attribs.editable = 2  # Double-click to edit
-                    attribs.help = 'Click to select, drag to reorder, double-click to rename'
-                else:
-                    attribs.help = 'Click to select (Safety mode: editing disabled)'
+                attribs.editable = 2  # Double-click to edit
+                attribs.help = 'Click to select, drag to reorder, double-click to rename'
 
         # Cell borders
         attribs.rightBorderOutColor = self.COLORS['border_right']
@@ -248,30 +240,28 @@ class SourcererList:
             self.dragRow = False
             did_move = False
 
-            # Only perform move if safety is off
-            if not self.getSafety():
-                if startRow != endRow and endRow is not None:
-                    from_index = startRow - 1
-                    num_sources = len(names)
+            if startRow != endRow and endRow is not None:
+                from_index = startRow - 1
+                num_sources = len(names)
 
-                    if endRow == 0:
-                        # Dropped on header - move to position 0
-                        ext.SOURCERER.MoveSource(from_index, 0)
-                        did_move = True
-                    elif endRow == -1:
-                        # Dropped past last row - move to end
-                        ext.SOURCERER.MoveSource(from_index, num_sources)
-                        did_move = True
-                    elif endRow > 0:
-                        # Dropped on a data row
-                        to_index = endRow - 1
+                if endRow == 0:
+                    # Dropped on header - move to position 0
+                    ext.SOURCERER.MoveSource(from_index, 0)
+                    did_move = True
+                elif endRow == -1:
+                    # Dropped past last row - move to end
+                    ext.SOURCERER.MoveSource(from_index, num_sources)
+                    did_move = True
+                elif endRow > 0:
+                    # Dropped on a data row
+                    to_index = endRow - 1
 
-                        if self.dropType == 'above':
-                            ext.SOURCERER.MoveSource(from_index, to_index)
-                            did_move = True
-                        elif self.dropType == 'below':
-                            ext.SOURCERER.MoveSource(from_index, to_index + 1)
-                            did_move = True
+                    if self.dropType == 'above':
+                        ext.SOURCERER.MoveSource(from_index, to_index)
+                        did_move = True
+                    elif self.dropType == 'below':
+                        ext.SOURCERER.MoveSource(from_index, to_index + 1)
+                        did_move = True
 
             # Reset drop target visuals
             if self.endRow is not None:
@@ -294,8 +284,7 @@ class SourcererList:
 
         # --- DURING: Show drop indicator while dragging ---
         elif not start and not end and self.dragRow:
-            # Only show indicator if safety is off and we're over a valid row
-            if not self.getSafety() and endRow is not None and startRow != endRow:
+            if endRow is not None and startRow != endRow:
                 num_sources = len(names)
                 lastRow = num_sources  # Last data row number
 
@@ -386,11 +375,6 @@ class SourcererList:
         if self.clipboard is None:
             disabled.append('Paste')
 
-        # Disable destructive actions if safety is on
-        if self.getSafety():
-            disabled.append('Paste')
-            disabled.append('Delete')
-
         op.TDResources.op('popMenu').Open(
             items=items,
             callback=self._onContextMenuSelect,
@@ -421,11 +405,6 @@ class SourcererList:
 
     def onEdit(self, comp, row, col, val):
         """Handle inline editing (rename)."""
-        # Block if safety is on
-        if self.getSafety():
-            self.Refresh()  # Reset to original value
-            return
-
         if row > 0:
             source_index = row - 1
             ext.SOURCERER.RenameSource(source_index, val)

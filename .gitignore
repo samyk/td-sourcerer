@@ -3,3 +3,5 @@ tmpclaude*
 *.toe
 macros/
 TDLogs/
+content/
+.claude/

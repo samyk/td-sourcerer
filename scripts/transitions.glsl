@@ -2,9 +2,9 @@
 // Sourcerer Lite - Transitions shader
 // Transitions: Dissolve, Dip, Slide, Wipe, Blur, File, Top
 
-uniform float progress;
+uniform float progress;  // Always 0 to 1
 uniform int mode;
-uniform int state;  // 0 = transitioning from input0, 1 = transitioning from input1
+uniform int state;  // 0 = transitioning from input0 to input1, 1 = transitioning from input1 to input0
 
 // Dip to color
 uniform vec4 dip_color;
@@ -32,8 +32,9 @@ vec4 getIncoming(vec2 uv) {
 	return (state == 0) ? getInput1(uv) : getInput0(uv);
 }
 
-// Simple blur sample - samples in a cross pattern
-vec4 blurSample(int inputIdx, vec2 uv, float radius) {
+// State-aware blur sample
+vec4 blurSampleOutgoing(vec2 uv, float radius) {
+	int inputIdx = (state == 0) ? 0 : 1;
 	vec2 texelSize = 1.0 / uTD2DInfos[inputIdx].res.zw;
 	vec4 color = vec4(0.0);
 
@@ -41,10 +42,22 @@ vec4 blurSample(int inputIdx, vec2 uv, float radius) {
 	for (int x = -1; x <= 1; x++) {
 		for (int y = -1; y <= 1; y++) {
 			vec2 offset = vec2(float(x), float(y)) * texelSize * radius;
-			if (inputIdx == 0)
-				color += getInput0(uv + offset);
-			else
-				color += getInput1(uv + offset);
+			color += getOutgoing(uv + offset);
+		}
+	}
+	return color / 9.0;
+}
+
+vec4 blurSampleIncoming(vec2 uv, float radius) {
+	int inputIdx = (state == 0) ? 1 : 0;
+	vec2 texelSize = 1.0 / uTD2DInfos[inputIdx].res.zw;
+	vec4 color = vec4(0.0);
+
+	// 9-tap box blur
+	for (int x = -1; x <= 1; x++) {
+		for (int y = -1; y <= 1; y++) {
+			vec2 offset = vec2(float(x), float(y)) * texelSize * radius;
+			color += getIncoming(uv + offset);
 		}
 	}
 	return color / 9.0;
@@ -56,30 +69,31 @@ vec4 blurSample(int inputIdx, vec2 uv, float radius) {
 // Dissolve - simple crossfade
 vec4 Dissolve(vec2 uv)
 {
-	return mix(getInput0(uv), getInput1(uv), progress);
+	return mix(getOutgoing(uv), getIncoming(uv), progress);
 }
 
-// Dip - fade through a color at midpoint
+// Dip - fade to color then from color (no source mixing)
 vec4 Dip(vec2 uv)
 {
-	// Distance from endpoints: 0 at ends, 1 at middle (progress=0.5)
-	float mid_blend = 1.0 - abs(progress * 2.0 - 1.0);
-
-	// Blend between inputs based on progress
-	vec4 endpoint_color = mix(getInput0(uv), getInput1(uv), progress);
-
-	// Mix with dip_color at midpoint
-	return mix(endpoint_color, dip_color, mid_blend);
+	if (progress < 0.5) {
+		// First half: fade from outgoing to dip_color
+		// Remap progress 0.0-0.5 to 0.0-1.0
+		float t = progress * 2.0;
+		return mix(getOutgoing(uv), dip_color, t);
+	}
+	else {
+		// Second half: fade from dip_color to incoming
+		// Remap progress 0.5-1.0 to 0.0-1.0
+		float t = (progress - 0.5) * 2.0;
+		return mix(dip_color, getIncoming(uv), t);
+	}
 }
 
 // Slide - content pushes in/out
 vec4 Slide(vec2 uv)
 {
-	// Normalize progress for transition math
-	float t = (state == 0) ? progress : (1.0 - progress);
-
-	float x = t * trans_direction.x;
-	float y = t * trans_direction.y;
+	float x = progress * trans_direction.x;
+	float y = progress * trans_direction.y;
 
 	if (x >= 0.0 && y >= 0.0) {
 		// Sliding right and/or up
@@ -117,24 +131,19 @@ vec4 Slide(vec2 uv)
 // Wipe - hard edge reveal
 vec4 Wipe(vec2 uv)
 {
-	// Normalize progress for transition math
-	float t = (state == 0) ? progress : (1.0 - progress);
-
 	// Calculate wipe threshold based on direction
 	// For horizontal wipe (direction.x != 0): compare uv.x
 	// For vertical wipe (direction.y != 0): compare uv.y
-	float threshold;
+	float threshold = progress;
 	float coord;
 
 	if (abs(trans_direction.x) > abs(trans_direction.y)) {
 		// Horizontal wipe
 		coord = (trans_direction.x > 0.0) ? uv.x : (1.0 - uv.x);
-		threshold = t;
 	}
 	else {
 		// Vertical wipe
 		coord = (trans_direction.y > 0.0) ? uv.y : (1.0 - uv.y);
-		threshold = t;
 	}
 
 	// Hard edge: incoming revealed where coord < threshold
@@ -146,42 +155,38 @@ vec4 Wipe(vec2 uv)
 	}
 }
 
-// Blur - blur out then blur in
+// Blur - crossfade with blur peaking at midpoint
 vec4 Blur(vec2 uv)
 {
 	// Maximum blur radius at midpoint
-	float maxRadius = 20.0;
+	float maxRadius = 6.0;
 
 	// Blur amount: 0 at ends, max at middle
 	float blurAmount = (1.0 - abs(progress * 2.0 - 1.0)) * maxRadius;
 
-	if (progress < 0.5) {
-		// First half: blur outgoing
-		if (blurAmount < 0.5) {
-			return getOutgoing(uv);
-		}
-		return blurSample(state, uv, blurAmount);
+	// Sample both sources with blur
+	vec4 colorOut, colorIn;
+	if (blurAmount < 0.5) {
+		// No blur needed
+		colorOut = getOutgoing(uv);
+		colorIn = getIncoming(uv);
 	}
 	else {
-		// Second half: unblur incoming
-		int incomingIdx = 1 - state;
-		if (blurAmount < 0.5) {
-			return getIncoming(uv);
-		}
-		return blurSample(incomingIdx, uv, blurAmount);
+		colorOut = blurSampleOutgoing(uv, blurAmount);
+		colorIn = blurSampleIncoming(uv, blurAmount);
 	}
+
+	// Crossfade between blurred sources
+	return mix(colorOut, colorIn, progress);
 }
 
 // Luma matte transition helper
 // Matte goes black to white - black pixels transition first
 vec4 LumaMatte(vec2 uv, float luma)
 {
-	// Adjust progress based on state direction
-	float t = (state == 0) ? progress : (1.0 - progress);
-
 	// Where luma < progress, show incoming; otherwise show outgoing
 	// Black (0) transitions first, white (1) transitions last
-	if (luma < t) {
+	if (luma < progress) {
 		return getIncoming(uv);
 	}
 	else {

@@ -368,7 +368,7 @@ class SourcererList:
 
     def _openContextMenu(self, source_index):
         """Open right-click context menu."""
-        items = ['Trigger', 'Copy', 'Paste', 'Delete']
+        items = ['Trigger', 'Copy', 'Paste', 'Delete', '', 'Import', 'Export Selected', 'Export All']
         disabled = []
 
         # Disable paste if clipboard is empty
@@ -396,6 +396,12 @@ class SourcererList:
                 ext.SOURCERER.PasteSourceData(source_index, self.clipboard)
         elif action == 'Delete':
             ext.SOURCERER.DeleteSource()
+        elif action == 'Import':
+            ext.SOURCERER.Import()
+        elif action == 'Export Selected':
+            ext.SOURCERER.ExportSelected()
+        elif action == 'Export All':
+            ext.SOURCERER.ExportAll()
 
     def onRadio(self, comp, row, col, prevRow, prevCol):
         return

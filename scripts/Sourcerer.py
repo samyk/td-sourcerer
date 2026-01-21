@@ -6,6 +6,7 @@ import json
 import os
 from pprint import pprint
 from TDStoreTools import StorageManager, DependList
+import TDFunctions as TDF
 from CallbacksExt import CallbacksExt
 
 
@@ -70,7 +71,9 @@ class Sourcerer(CallbacksExt):
 
         # State machine for transitions
         self.transitionState = TransitionState.IDLE
-        self.pendingQueue = []  # Queue of sources to switch to
+
+        # Pending queue as a dependable property for UI visualization
+        TDF.createProperty(self, 'PendingQueue', value=[], dependable=True, readOnly=False)
 
     # -------------------------------------------------------------------------
     # Public Properties (clean interface for other components like lists)
@@ -110,6 +113,11 @@ class Sourcerer(CallbacksExt):
     def isTransitioning(self):
         """Whether a transition is currently in progress."""
         return self.transitionState == TransitionState.TRANSITIONING
+
+    @property
+    def isQueueEnabled(self):
+        """Whether the pending queue is enabled."""
+        return self.ownerComp.par.Enablependingqueue.eval()
 
     @property
     def isEditingActive(self):
@@ -211,7 +219,7 @@ class Sourcerer(CallbacksExt):
         self.stored['Sources'] = []
 
         # Clear pending queue and reset transition state
-        self.pendingQueue.clear()
+        self.PendingQueue.clear()
         self.transitionState = TransitionState.IDLE
 
         # Create one default source
@@ -266,13 +274,32 @@ class Sourcerer(CallbacksExt):
 
         return source_json, index, name
 
-    def SwitchToSource(self, source):
-        """Switch to a source. If already transitioning, queues the request."""
-        # If already transitioning, add to queue
+    def SwitchToSource(self, source, force=False):
+        """Switch to a source.
+
+        Args:
+            source: Source index or name to switch to
+            force: If True, clears pending queue and switches immediately,
+                   ignoring Enablependingqueue setting
+        """
+        # Force mode: clear queue and switch right away
+        if force:
+            self.PendingQueue.clear()
+            self._beginTransition(source)
+            return
+
+        # Check if pending queue is enabled
+        queue_enabled = self.ownerComp.par.Enablependingqueue.eval()
+
+        # If already transitioning, decide whether to queue or switch immediately
         if self.transitionState == TransitionState.TRANSITIONING:
-            # Avoid duplicate consecutive entries
-            if not self.pendingQueue or self.pendingQueue[-1] != source:
-                self.pendingQueue.append(source)
+            if queue_enabled:
+                # Avoid duplicate consecutive entries
+                if not self.PendingQueue or self.PendingQueue[-1] != source:
+                    self.PendingQueue.append(source)
+            else:
+                # Queue disabled - begin transition immediately (will interrupt current)
+                self._beginTransition(source)
             return
 
         self._beginTransition(source)
@@ -381,8 +408,8 @@ class Sourcerer(CallbacksExt):
         self._log('TransitionComplete', {'index': self.activeIndex, 'name': self.activeName})
 
         # Process next item in queue if any
-        if self.pendingQueue:
-            next_source = self.pendingQueue.pop(0)
+        if self.PendingQueue:
+            next_source = self.PendingQueue.pop(0)
             self.SwitchToSource(next_source)
 
     def OnSourceDone(self):
@@ -397,14 +424,14 @@ class Sourcerer(CallbacksExt):
 
     def ClearPendingQueue(self):
         """Clear all pending source switches."""
-        self.pendingQueue.clear()
+        self.PendingQueue.clear()
 
     def SkipToLastPending(self):
         """Clear queue but keep last item - jump to final destination."""
-        if len(self.pendingQueue) > 1:
-            last = self.pendingQueue[-1]
-            self.pendingQueue.clear()
-            self.pendingQueue.append(last)
+        if len(self.PendingQueue) > 1:
+            last = self.PendingQueue[-1]
+            self.PendingQueue.clear()
+            self.PendingQueue.append(last)
 
     def SwitchToSelectedSource(self):
         s = self.stored['SelectedSource']['index']
@@ -1016,3 +1043,6 @@ class Sourcerer(CallbacksExt):
 
     def pulse_Initsources(self):
         self.InitSources(force_confirm=True)
+
+    def pulse_Clearpendingqueue(self):
+        self.ClearPendingQueue()

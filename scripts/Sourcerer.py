@@ -8,6 +8,7 @@ Author: Matthew Wachter
 License: MIT
 """
 
+import copy
 import json
 import os
 from TDStoreTools import StorageManager, DependList
@@ -228,6 +229,14 @@ class Sourcerer(CallbacksExt):
                     case _:
                         logger.Info(log_msg)
 
+        # Fire onLog callback
+        self.DoCallback('onLog', {
+            'time': time_str,
+            'event': event,
+            'data': data,
+            'level': level
+        })
+
     def ClearLog(self):
         """Clear all log entries."""
         self.stored['Log'].clear()
@@ -427,7 +436,7 @@ class Sourcerer(CallbacksExt):
         self.DoCallback('onSwitchToSource', {
             'index': index,
             'name': name,
-            'source': source_data
+            'source_data': source_data
         })
         self._log('SwitchToSource', {'index': index, 'name': name})
 
@@ -795,7 +804,7 @@ class Sourcerer(CallbacksExt):
     def CopySource(self):
         """Duplicate the selected source."""
         s = self.stored['SelectedSource']['index']
-        source = json.loads(json.dumps(self.stored['Sources'][s]))
+        source = copy.deepcopy(self.stored['Sources'][s])
         source = self._checkUniqueName(source)
         self.stored['Sources'].insert(s, source)
         self.SelectSource(s)
@@ -894,11 +903,18 @@ class Sourcerer(CallbacksExt):
         self.UpdateSelectedSourceComp()
         self._log('MoveSource', {'name': moved_name, 'from': from_index, 'to': to_index})
 
-    def CopySourceData(self, index):
-        """Copy source data at index for clipboard operations."""
-        if 0 <= index < len(self.stored['Sources']):
-            # Deep copy the source data
-            return json.loads(json.dumps(self.stored['Sources'][index]))
+    def CopySourceData(self, source):
+        """Copy source data by index or name.
+
+        Args:
+            source: Source index (int) or name (str).
+
+        Returns:
+            Deep copy of the source data dict, or None if not found.
+        """
+        source_data, _, _ = self._getSource(source)
+        if source_data is not None:
+            return copy.deepcopy(source_data)
         return None
 
     def PasteSourceData(self, index, data):
@@ -909,7 +925,7 @@ class Sourcerer(CallbacksExt):
         if data is None:
             return
 
-        new_source = json.loads(json.dumps(data))
+        new_source = copy.deepcopy(data)
         new_source = self._checkUniqueName(new_source)
         self.stored['Sources'].insert(index + 1, new_source)
         self.SelectSource(index + 1)

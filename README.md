@@ -467,7 +467,7 @@ When safety is enabled, protected actions will show a confirmation dialog before
 | `RenameSource(index, new_name)` | Rename a source at the given index. |
 | `MoveSource(from_index, to_index)` | Move a source from one position to another. |
 | `SelectSource(index)` | Select a source by index (for editing). |
-| `CopySourceData(index)` | Copy source data at index (returns dict). |
+| `CopySourceData(source)` | Copy source data by index or name (returns deep copy dict). |
 | `PasteSourceData(index, data)` | Paste source data after the given index. |
 | `GetDefaultSource()` | Get a source template dict for customization. |
 | `DropSource(args)` | Handle dropped files/TOPs (used by list component). |

@@ -10,7 +10,7 @@ License: MIT
 
 Sourcerer Lite is a streamlined media management component for TouchDesigner that provides organized playback, processing, and switching of image files and generative sources.
 
-![sourcerer_screen1](images/screen1.jpg)
+![sourcerer_screen1](images/sourcerer.jpg)
 
 ## Features
 
@@ -34,9 +34,13 @@ Sourcerer Lite is a streamlined media management component for TouchDesigner tha
 Sources can be created, arranged, and triggered using the toolbar buttons above the source list. New sources can also be created by dropping files or TOPs directly into the list.
 
 **Toolbar buttons:**
-- ![add](images/add_new.jpg) Add new source
-- ![switch_to_source](images/switch_to_source.jpg) Switch to selected source
-- ![lock](images/lock.jpg) Lock/unlock editing (prevents accidental changes)
+
+![source_list_controls](images/source_list_controls.jpg)
+
+- **Add** - Add new source
+- **Switch** - Switch to selected source
+- **Delete** - Delete selected source
+- **Lock** - Lock/unlock editing (prevents accidental changes)
 
 Sources can be reordered by dragging within the list.
 
@@ -233,6 +237,20 @@ The **Transition Progress Shape** parameter controls the easing curve:
 | Logistic (soft/hard) | Sigmoid curve with configurable steepness |
 | Arctangent (soft/hard) | Atan-based curve with configurable steepness |
 | Custom | User-provided CHOP (single channel, 0 to 1) |
+
+**Curve visualizations:**
+
+| Linear | Ease In | Ease Out |
+|:------:|:-------:|:--------:|
+| ![linear](images/curve_linear.jpg) | ![ease_in](images/curve_ease_in.jpg) | ![ease_out](images/curve_ease_out.jpg) |
+
+| Half Cosine Soft | Half Cosine Hard | Logistic Soft |
+|:----------------:|:----------------:|:-------------:|
+| ![halfcos_soft](images/curve_halfcos_soft.jpg) | ![halfcos_hard](images/curve_halfcos_hard.jpg) | ![logistic_soft](images/curve_logistic_soft.jpg) |
+
+| Logistic Hard | Arctangent Soft | Arctangent Hard |
+|:-------------:|:---------------:|:---------------:|
+| ![logistic_hard](images/curve_logistic_hard.jpg) | ![atan_soft](images/curve_atan_soft.jpg) | ![atan_hard](images/curve_atan_hard.jpg) |
 
 ## Follow Actions
 

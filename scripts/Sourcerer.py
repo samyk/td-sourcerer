@@ -337,20 +337,57 @@ class Sourcerer(CallbacksExt):
 
         self._beginTransition(source)
 
-    def _beginTransition(self, source):
-        """Start the actual transition to a source."""
+    def SwitchToSourceData(self, source_data):
+        """Switch to a temporary source from a source data dictionary.
+
+        The source is not added to the source list. ActiveIndex will be -1.
+        Temp sources always switch immediately (not queued) and do not support
+        follow actions since they have no index in the source list.
+
+        Use GetDefaultSource() or CopySourceData() to get a template, modify it,
+        then pass it here.
+
+        Args:
+            source_data: Complete source dict (from GetDefaultSource() or CopySourceData())
+
+        Example:
+            source = op('Sourcerer').GetDefaultSource()
+            source['Settings']['Name'] = 'Emergency Override'
+            source['Settings']['Transitiontype'] = 'dissolve'
+            source['Settings']['Transitiontime'] = 0.5
+            source['File']['File'] = '/path/to/emergency.mp4'
+            op('Sourcerer').SwitchToSourceData(source)
+        """
+        # Temp sources always switch immediately - clear any pending queue
+        self.PendingQueue.clear()
+        self._beginTransition(None, source_data=source_data)
+
+    def _beginTransition(self, source, source_data=None):
+        """Start the actual transition to a source.
+
+        Args:
+            source: Source index or name (ignored if source_data provided)
+            source_data: Optional complete source dict for temp sources
+        """
         self.transitionState = TransitionState.TRANSITIONING
 
         state = self.stored['State']
         next_state = 1 - state
         source_comp = self.ownerComp.op('source' + str(next_state))
-        source_data, index, name = self._getSource(source)
 
-        if source_data is None:
-            self.transitionState = TransitionState.IDLE
-            return
+        # Temp source: use provided data directly
+        if source_data is not None:
+            name = source_data.get('Settings', {}).get('Name', 'Temp')
+            index = -1
+            source_comp.UpdateFromData(source_data, active=True, store_changes=False, index=-1)
+        # Normal source: look up from storage
+        else:
+            source_data, index, name = self._getSource(source)
+            if source_data is None:
+                self.transitionState = TransitionState.IDLE
+                return
+            self.UpdateSourceCompQuick(source_comp, index)
 
-        self.UpdateSourceCompQuick(source_comp, index)
         source_comp.Start()
 
         # Configure transition parameters

@@ -69,6 +69,71 @@ op('Sourcerer').SwitchToSource('Blackout')
 op('Sourcerer').SwitchToSource('Emergency', force=True)
 ```
 
+### Creating Sources Programmatically
+
+Use `GetDefaultSource()` to get a source template, modify it, then pass it to `AddSource()`:
+
+```python
+# Get a template with default values
+source = op('Sourcerer').GetDefaultSource()
+
+# Customize the source settings
+source['Settings']['Name'] = 'My Video'
+source['Settings']['Sourcetype'] = 'file'
+source['Settings']['Transitiontype'] = 'blur'
+source['Settings']['Transitiontime'] = 1.5
+
+# Set file-specific parameters
+source['File']['File'] = '/path/to/video.mp4'
+source['File']['Speed'] = 1.0
+
+# Add the source to the list
+op('Sourcerer').AddSource(source=source)
+```
+
+For simpler cases, use the shorthand parameters:
+
+```python
+# Add a file source
+op('Sourcerer').AddSource(source_type='file', source_path='/path/to/video.mp4', source_name='My Video')
+
+# Add a TOP source
+op('Sourcerer').AddSource(source_type='top', source_path='/project1/myTOP', source_name='Generator')
+```
+
+### Temporary Sources
+
+Switch to a source that doesn't exist in the source list using `SwitchToSourceData()`. This is useful for emergency overrides, one-off content, or dynamically generated sources:
+
+```python
+# Create a temporary source
+source = op('Sourcerer').GetDefaultSource()
+source['Settings']['Name'] = 'Emergency Override'
+source['Settings']['Transitiontype'] = 'dissolve'
+source['Settings']['Transitiontime'] = 0.25
+source['File']['File'] = '/path/to/emergency.mp4'
+
+# Switch to it (clears queue, switches immediately)
+op('Sourcerer').SwitchToSourceData(source)
+```
+
+**Temporary source behavior:**
+- `ActiveIndex` is set to -1 (not in the source list)
+- `ActiveName` is set to the source's Name field
+- Always switches immediately (clears pending queue)
+- Follow actions are not supported (no index to reference)
+- The source is not added to the list
+
+You can also copy an existing source and modify it:
+
+```python
+# Copy source at index 0 and modify it
+source = op('Sourcerer').CopySourceData(0)
+source['Settings']['Name'] = 'Modified Copy'
+source['File']['Speed'] = 2.0  # Double speed
+op('Sourcerer').SwitchToSourceData(source)
+```
+
 ### Pending Queue
 
 When a transition is in progress and a new source switch is requested, the request is added to a pending queue. This ensures transitions complete smoothly without interruption.
@@ -378,6 +443,7 @@ When safety is enabled, protected actions will show a confirmation dialog before
 | Method | Description |
 |--------|-------------|
 | `SwitchToSource(source, force=False)` | Switch to a source by index or name. Use `force=True` to clear queue and switch immediately. |
+| `SwitchToSourceData(source_data)` | Switch to a temporary source from a dict. Clears queue and switches immediately. ActiveIndex = -1. |
 | `AddSource(source=None, source_type=None, source_path=None, source_name=None)` | Add a new source. Pass a complete source dict or individual parameters. |
 | `DeleteSource()` | Delete the currently selected source. |
 | `RenameSource(index, new_name)` | Rename a source at the given index. |
@@ -406,7 +472,7 @@ When safety is enabled, protected actions will show a confirmation dialog before
 | `SourceNames` | list | List of all source names (dependable). |
 | `SelectedIndex` | int | Index of currently selected source (dependable). |
 | `SelectedName` | str | Name of currently selected source. |
-| `ActiveIndex` | int | Index of currently active (playing) source. |
+| `ActiveIndex` | int | Index of currently active (playing) source (-1 for temp sources). |
 | `ActiveName` | str | Name of currently active source (dependable). |
 | `ActiveSourceComp` | COMP | Reference to the active source component. |
 | `isTransitioning` | bool | Whether a transition is in progress. |

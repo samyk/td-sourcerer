@@ -717,41 +717,41 @@ class Sourcerer(CallbacksExt):
             source['Settings']['Name'] = 'My Source'
             source['Settings']['Transitiontype'] = 'blur'
             source['File']['File'] = '/path/to/video.mp4'
-            op('Sourcerer').AddSource(source=source)
+            op('Sourcerer').AddSource(source_data=source)
         """
         return self._getSourceTemplate('defaultSource')
 
-    def _addSource(self, source=None, source_type=None, source_path=None, source_name=None):
+    def _addSource(self, source_data=None, source_type=None, source_path=None, source_name=None):
         """Internal add source without safety check. Used by InitSources."""
         # get the selected source index
         s = self.stored['SelectedSource']['index']
 
         # use provided source or default template
-        if source is None:
-            source = self._getSourceTemplate('defaultSource')
+        if source_data is None:
+            source_data = self._getSourceTemplate('defaultSource')
 
             # set the source type and path if provided
             if source_type == 'file':
-                source['Settings']['Sourcetype'] = 'file'
+                source_data['Settings']['Sourcetype'] = 'file'
                 if source_path is not None:
-                    source['File']['File'] = source_path
+                    source_data['File']['File'] = source_path
 
             elif source_type == 'top':
-                source['Settings']['Sourcetype'] = 'top'
+                source_data['Settings']['Sourcetype'] = 'top'
                 if source_path is not None:
-                    source['TOP']['Top'] = source_path
+                    source_data['TOP']['Top'] = source_path
 
             # source_type=None leaves Sourcetype at its default value (likely 'none')
 
             # set the name - use provided name or default to "Source"
-            source['Settings']['Name'] = source_name if source_name is not None else 'new_source'
+            source_data['Settings']['Name'] = source_name if source_name is not None else 'new_source'
 
-        source = self._checkUniqueName(source)
+        source_data = self._checkUniqueName(source_data)
 
         # insert the template into the sources list
         # handle empty list case - insert at 0 instead of s+1
         insert_index = s + 1 if self.stored['Sources'] else 0
-        self.stored['Sources'].insert(insert_index, source)
+        self.stored['Sources'].insert(insert_index, source_data)
 
         self.SelectSource(insert_index)
 
@@ -759,22 +759,22 @@ class Sourcerer(CallbacksExt):
         self.UpdateSourceCompQuick(self.selectedSourceComp, insert_index, store_changes=True)
         self._updateSourceList()
 
-        self._log('AddSource', {'index': insert_index, 'name': source['Settings']['Name']})
+        self._log('AddSource', {'index': insert_index, 'name': source_data['Settings']['Name']})
 
-    def AddSource(self, source=None, source_type=None, source_path=None, source_name=None):
+    def AddSource(self, source_data=None, source_type=None, source_path=None, source_name=None):
         """Add a new source.
 
         Args:
-            source: Optional complete source dict (from GetDefaultSource()).
-                    When provided, other arguments are ignored.
-            source_type: 'file' or 'top' (ignored if source is provided)
-            source_path: Path to file or TOP (ignored if source is provided)
-            source_name: Display name (ignored if source is provided)
+            source_data: Optional complete source dict (from GetDefaultSource()).
+                         When provided, other arguments are ignored.
+            source_type: 'file' or 'top' (ignored if source_data is provided)
+            source_path: Path to file or TOP (ignored if source_data is provided)
+            source_name: Display name (ignored if source_data is provided)
         """
         # Confirm if safety is on
         if not self._confirmSafetyAction('Add Source'):
             return
-        self._addSource(source, source_type, source_path, source_name)
+        self._addSource(source_data, source_type, source_path, source_name)
         return
 
     def DropSource(self, args):

@@ -92,7 +92,7 @@ source['File']['File'] = '/path/to/video.mp4'
 source['File']['Speed'] = 1.0
 
 # Add the source to the list
-op('Sourcerer').AddSource(source=source)
+op('Sourcerer').AddSource(source_data=source)
 ```
 
 For simpler cases, use the shorthand parameters:
@@ -462,7 +462,7 @@ When safety is enabled, protected actions will show a confirmation dialog before
 |--------|-------------|
 | `SwitchToSource(source, force=False)` | Switch to a source by index or name. Use `force=True` to clear queue and switch immediately. |
 | `SwitchToSourceData(source_data)` | Switch to a temporary source from a dict. Clears queue and switches immediately. ActiveIndex = -1. |
-| `AddSource(source=None, source_type=None, source_path=None, source_name=None)` | Add a new source. Pass a complete source dict or individual parameters. |
+| `AddSource(source_data=None, source_type=None, source_path=None, source_name=None)` | Add a new source. Pass a complete source dict or individual parameters. |
 | `DeleteSource()` | Delete the currently selected source. |
 | `RenameSource(index, new_name)` | Rename a source at the given index. |
 | `MoveSource(from_index, to_index)` | Move a source from one position to another. |

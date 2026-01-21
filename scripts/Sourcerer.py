@@ -49,7 +49,6 @@ class Sourcerer(CallbacksExt):
 
         storedItems = [
             {'name': 'Sources', 'default': [], 'dependable': False},
-            {'name': 'SourceList', 'default': [], 'dependable': True},
             {
                 'name': 'SelectedSource',
                 'default': {'index': 0, 'name': ''},
@@ -67,7 +66,6 @@ class Sourcerer(CallbacksExt):
         ]
 
         self.stored = StorageManager(self, self.DataComp, storedItems)
-        self._updateSourceList()
 
         # State machine for transitions
         self.transitionState = TransitionState.IDLE
@@ -75,19 +73,16 @@ class Sourcerer(CallbacksExt):
         # Pending queue as a dependable property for UI visualization
         TDF.createProperty(self, 'PendingQueue', value=[], dependable=True, readOnly=False)
 
+        # Dependable properties for external UI components (lists, etc.)
+        # Initialize with current stored data (not empty defaults)
+        source_names = [str(s['Settings']['Name']) for s in self.stored['Sources']]
+        TDF.createProperty(self, 'SourceNames', value=source_names, dependable=True, readOnly=False)
+        TDF.createProperty(self, 'SelectedIndex', value=self.stored['SelectedSource']['index'], dependable=True, readOnly=False)
+        TDF.createProperty(self, 'ActiveName', value=self.stored['ActiveSource']['name'], dependable=True, readOnly=False)
+
     # -------------------------------------------------------------------------
     # Public Properties (clean interface for other components like lists)
     # -------------------------------------------------------------------------
-
-    @property
-    def SourceNames(self):
-        """List of source names for display."""
-        return [s['Settings']['Name'] for s in self.stored['Sources']]
-
-    @property
-    def SelectedIndex(self):
-        """Currently selected source index."""
-        return self.stored['SelectedSource']['index']
 
     @property
     def SelectedName(self):
@@ -98,11 +93,6 @@ class Sourcerer(CallbacksExt):
     def ActiveIndex(self):
         """Index of the currently active source."""
         return self.stored['ActiveSource']['index']
-
-    @property
-    def ActiveName(self):
-        """Name of the currently active source."""
-        return self.stored['ActiveSource']['name']
 
     @property
     def ActiveSourceComp(self):
@@ -169,8 +159,14 @@ class Sourcerer(CallbacksExt):
         'data': (255, 255, 255),        # white
     }
 
-    def _log(self, event, data):
-        """Add an entry to the log with timestamp. Newest first, max 20 entries."""
+    def _log(self, event, data, level='INFO'):
+        """Add an entry to the log with timestamp. Newest first, max 10 entries.
+
+        Args:
+            event: Event name (e.g., 'SwitchToSource', 'AddSource')
+            data: Dict of event data
+            level: Log level for external logger ('INFO', 'WARNING', 'ERROR')
+        """
         import datetime
 
         # Format time with 2 decimal places on seconds
@@ -202,11 +198,26 @@ class Sourcerer(CallbacksExt):
         )
         self.stored['LogFormatted'].insert(0, formatted)
 
-        # Keep only the first 20 entries (newest)
+        # Keep only the first 10 entries (newest)
         if len(self.stored['Log']) > 10:
             self.stored['Log'] = self.stored['Log'][:10]
         if len(self.stored['LogFormatted']) > 10:
             self.stored['LogFormatted'] = self.stored['LogFormatted'][:10]
+
+        # Write to external Logger if enabled
+        if self.ownerComp.par.Enablelogging.eval():
+            logger = self.ownerComp.par.Logger.eval()
+            if logger is not None:
+                log_msg = f"{time_str} | {event} | {data_str}"
+                match level:
+                    case 'INFO':
+                        logger.Info(log_msg)
+                    case 'WARNING':
+                        logger.Warning(log_msg)
+                    case 'ERROR':
+                        logger.Error(log_msg)
+                    case _:
+                        logger.Info(log_msg)
 
     def ClearLog(self):
         """Clear all log entries."""
@@ -234,6 +245,10 @@ class Sourcerer(CallbacksExt):
         self.stored['ActiveSource']['name'] = 'Source 0'
         self.stored['State'] = 0
 
+        # Update dependable properties
+        self.SelectedIndex = 0
+        self.ActiveName = 'Source 0'
+
         # Update the source list and UI
         self._updateSourceList()
         self.UpdateSelectedSourceComp()
@@ -241,8 +256,8 @@ class Sourcerer(CallbacksExt):
         self._log('Init', {'method': 'InitData'})
 
     def _updateSourceList(self):
-        source_list = [str(s['Settings']['Name']) for s in self.stored['Sources']]
-        self.stored['SourceList'] = source_list
+        """Update the SourceNames dependable property from stored Sources."""
+        self.SourceNames = [str(s['Settings']['Name']) for s in self.stored['Sources']]
 
     def _getSource(self, source):
         source_json = None
@@ -362,6 +377,7 @@ class Sourcerer(CallbacksExt):
         self.stored['State'] = next_state
         self.stored['ActiveSource']['index'] = index
         self.stored['ActiveSource']['name'] = name
+        self.ActiveName = name  # Update dependable property
 
         self.DoCallback('onSwitchToSource', {
             'index': index,
@@ -431,7 +447,7 @@ class Sourcerer(CallbacksExt):
                     a = ui.messageBox('Sourcerer Import Location', 'Select a location:', buttons=['Prepend', 'Insert (above selected)', 'Append'])
 
                     sources = []
-                    sources.extend(self.stored['Sources'].getRaw())
+                    sources.extend(self.stored['Sources'])
 
                     # prepend
                     if a == 0:
@@ -513,6 +529,7 @@ class Sourcerer(CallbacksExt):
         # set the selected source to 0
         self.stored['SelectedSource']['index'] = 0
         self.stored['SelectedSource']['name'] = ''
+        self.SelectedIndex = 0  # Update dependable property
 
         # add a default source (skip safety check since we just confirmed)
         self._addSource()
@@ -740,7 +757,7 @@ class Sourcerer(CallbacksExt):
         self._addSource(source, source_type, source_path, source_name)
         return
 
-    def _DropSource(self, args):
+    def DropSource(self, args):
         # for each dropped item
         for dropped in args:
 
@@ -754,7 +771,7 @@ class Sourcerer(CallbacksExt):
                     file_ext = os.path.splitext(base)[1][1:]
 
                     if file_ext in tdu.fileTypes['movie'] or file_ext in tdu.fileTypes['image']:
-                        self.AddSource(source_type, source_path, source_name)
+                        self.AddSource(source_type=source_type, source_path=source_path, source_name=source_name)
 
             # top source
             elif hasattr(dropped, 'family'):
@@ -762,7 +779,7 @@ class Sourcerer(CallbacksExt):
                     source_type = 'top'
                     source_path = dropped.path
                     source_name = dropped.name
-                    self.AddSource(source_type, source_path, source_name)
+                    self.AddSource(source_type=source_type, source_path=source_path, source_name=source_name)
 
             else:
                 debug('not valid source type')
@@ -810,6 +827,7 @@ class Sourcerer(CallbacksExt):
             if is_active:
                 self.stored['ActiveSource']['index'] = -1
                 self.stored['ActiveSource']['name'] = ''
+                self.ActiveName = ''  # Update dependable property
 
             # Update ActiveSource index if it was after the deleted source
             elif self.stored['ActiveSource']['index'] > s:
@@ -847,6 +865,7 @@ class Sourcerer(CallbacksExt):
             # Update ActiveSource name if we renamed the active source
             if self.stored['ActiveSource']['index'] == index:
                 self.stored['ActiveSource']['name'] = name
+                self.ActiveName = name  # Update dependable property
 
             self._updateSourceList()
             self.UpdateSelectedSourceComp()
@@ -900,6 +919,7 @@ class Sourcerer(CallbacksExt):
         # Update selection to follow the moved item
         self.stored['SelectedSource']['index'] = to_index
         self.stored['SelectedSource']['name'] = moved_name
+        self.SelectedIndex = to_index  # Update dependable property
         self._updateSourceList()
         self.UpdateSelectedSourceComp()
 
@@ -943,6 +963,7 @@ class Sourcerer(CallbacksExt):
 
         # set the selected source
         self.stored['SelectedSource']['index'] = index
+        self.SelectedIndex = index  # Update dependable property
         if 0 <= index < len(self.stored['Sources']):
             self.stored['SelectedSource']['name'] = self.stored['Sources'][index]['Settings']['Name']
         else:

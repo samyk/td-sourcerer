@@ -434,5 +434,5 @@ class SourcererList:
     def onDrop(self, comp, info):
         """Handle external file/TOP drops."""
         dragItems = info.get('dragItems', [])
-        op(self.ownerComp.par.Sourcerer)._DropSource(dragItems)
+        op(self.ownerComp.par.Sourcerer).DropSource(dragItems)
         return {'droppedOn': comp}

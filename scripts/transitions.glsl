@@ -12,6 +12,9 @@ uniform vec4 dip_color;
 // Slide/Wipe direction
 uniform vec2 trans_direction;
 
+// Blur amount (max blur radius multiplier)
+uniform float blur_amount;
+
 
 // HELPER FUNCTIONS
 
@@ -32,35 +35,59 @@ vec4 getIncoming(vec2 uv) {
 	return (state == 0) ? getInput1(uv) : getInput0(uv);
 }
 
-// State-aware blur sample
+// State-aware blur sample with 13-tap Gaussian-weighted kernel
 vec4 blurSampleOutgoing(vec2 uv, float radius) {
 	int inputIdx = (state == 0) ? 0 : 1;
 	vec2 texelSize = 1.0 / uTD2DInfos[inputIdx].res.zw;
-	vec4 color = vec4(0.0);
 
-	// 9-tap box blur
-	for (int x = -1; x <= 1; x++) {
-		for (int y = -1; y <= 1; y++) {
-			vec2 offset = vec2(float(x), float(y)) * texelSize * radius;
-			color += getOutgoing(uv + offset);
-		}
-	}
-	return color / 9.0;
+	// Gaussian weights for 13-tap (center + 6 on each side, approximated to 2D)
+	// Using a cross pattern for efficiency: horizontal + vertical + center
+	vec4 color = getOutgoing(uv) * 0.2270270270;  // Center weight
+
+	// Horizontal samples
+	float offset1 = 1.3846153846 * radius;
+	float offset2 = 3.2307692308 * radius;
+	float weight1 = 0.3162162162;
+	float weight2 = 0.0702702703;
+
+	color += getOutgoing(uv + vec2(texelSize.x * offset1, 0.0)) * weight1;
+	color += getOutgoing(uv - vec2(texelSize.x * offset1, 0.0)) * weight1;
+	color += getOutgoing(uv + vec2(texelSize.x * offset2, 0.0)) * weight2;
+	color += getOutgoing(uv - vec2(texelSize.x * offset2, 0.0)) * weight2;
+
+	// Vertical samples (reuse same weights)
+	color += getOutgoing(uv + vec2(0.0, texelSize.y * offset1)) * weight1;
+	color += getOutgoing(uv - vec2(0.0, texelSize.y * offset1)) * weight1;
+	color += getOutgoing(uv + vec2(0.0, texelSize.y * offset2)) * weight2;
+	color += getOutgoing(uv - vec2(0.0, texelSize.y * offset2)) * weight2;
+
+	// Normalize (center + 4*weight1 + 4*weight2 for each axis, but we're doing cross pattern)
+	return color / (0.2270270270 + 4.0 * weight1 + 4.0 * weight2);
 }
 
 vec4 blurSampleIncoming(vec2 uv, float radius) {
 	int inputIdx = (state == 0) ? 1 : 0;
 	vec2 texelSize = 1.0 / uTD2DInfos[inputIdx].res.zw;
-	vec4 color = vec4(0.0);
 
-	// 9-tap box blur
-	for (int x = -1; x <= 1; x++) {
-		for (int y = -1; y <= 1; y++) {
-			vec2 offset = vec2(float(x), float(y)) * texelSize * radius;
-			color += getIncoming(uv + offset);
-		}
-	}
-	return color / 9.0;
+	// Gaussian weights - same as outgoing
+	vec4 color = getIncoming(uv) * 0.2270270270;
+
+	float offset1 = 1.3846153846 * radius;
+	float offset2 = 3.2307692308 * radius;
+	float weight1 = 0.3162162162;
+	float weight2 = 0.0702702703;
+
+	color += getIncoming(uv + vec2(texelSize.x * offset1, 0.0)) * weight1;
+	color += getIncoming(uv - vec2(texelSize.x * offset1, 0.0)) * weight1;
+	color += getIncoming(uv + vec2(texelSize.x * offset2, 0.0)) * weight2;
+	color += getIncoming(uv - vec2(texelSize.x * offset2, 0.0)) * weight2;
+
+	color += getIncoming(uv + vec2(0.0, texelSize.y * offset1)) * weight1;
+	color += getIncoming(uv - vec2(0.0, texelSize.y * offset1)) * weight1;
+	color += getIncoming(uv + vec2(0.0, texelSize.y * offset2)) * weight2;
+	color += getIncoming(uv - vec2(0.0, texelSize.y * offset2)) * weight2;
+
+	return color / (0.2270270270 + 4.0 * weight1 + 4.0 * weight2);
 }
 
 
@@ -158,22 +185,22 @@ vec4 Wipe(vec2 uv)
 // Blur - crossfade with blur peaking at midpoint
 vec4 Blur(vec2 uv)
 {
-	// Maximum blur radius at midpoint
-	float maxRadius = 6.0;
+	// Use blur_amount uniform as max radius (default behavior if 0 or unset: use 8.0)
+	float maxRadius = blur_amount > 0.0 ? blur_amount : 8.0;
 
-	// Blur amount: 0 at ends, max at middle
-	float blurAmount = (1.0 - abs(progress * 2.0 - 1.0)) * maxRadius;
+	// Blur intensity: 0 at ends, max at middle (peaks at progress = 0.5)
+	float blurIntensity = (1.0 - abs(progress * 2.0 - 1.0)) * maxRadius;
 
 	// Sample both sources with blur
 	vec4 colorOut, colorIn;
-	if (blurAmount < 0.5) {
-		// No blur needed
+	if (blurIntensity < 0.5) {
+		// No blur needed - use sharp samples
 		colorOut = getOutgoing(uv);
 		colorIn = getIncoming(uv);
 	}
 	else {
-		colorOut = blurSampleOutgoing(uv, blurAmount);
-		colorIn = blurSampleIncoming(uv, blurAmount);
+		colorOut = blurSampleOutgoing(uv, blurIntensity);
+		colorIn = blurSampleIncoming(uv, blurIntensity);
 	}
 
 	// Crossfade between blurred sources

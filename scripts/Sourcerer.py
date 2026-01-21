@@ -203,10 +203,10 @@ class Sourcerer(CallbacksExt):
         self.stored['LogFormatted'].insert(0, formatted)
 
         # Keep only the first 20 entries (newest)
-        if len(self.stored['Log']) > 20:
-            self.stored['Log'] = self.stored['Log'][:20]
-        if len(self.stored['LogFormatted']) > 20:
-            self.stored['LogFormatted'] = self.stored['LogFormatted'][:20]
+        if len(self.stored['Log']) > 10:
+            self.stored['Log'] = self.stored['Log'][:10]
+        if len(self.stored['LogFormatted']) > 10:
+            self.stored['LogFormatted'] = self.stored['LogFormatted'][:10]
 
     def ClearLog(self):
         """Clear all log entries."""
@@ -367,7 +367,8 @@ class Sourcerer(CallbacksExt):
             tcomp_par.Transitionfile = settings['Transitionfile']
         elif trans_type == 'top':
             tcomp_par.Transitiontop = settings['Transitiontop']
-        # dissolve and blur have no extra parameters
+        elif trans_type == 'blur':
+            tcomp_par.Bluramount = settings.get('Bluramount', 8.0)
 
         # set the transition time
         if settings['Useglobaltransitiontime']:

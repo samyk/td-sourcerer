@@ -80,27 +80,27 @@ class Sourcerer(CallbacksExt):
     # -------------------------------------------------------------------------
 
     @property
-    def sourceNames(self):
+    def SourceNames(self):
         """List of source names for display."""
         return [s['Settings']['Name'] for s in self.stored['Sources']]
 
     @property
-    def selectedIndex(self):
+    def SelectedIndex(self):
         """Currently selected source index."""
         return self.stored['SelectedSource']['index']
 
     @property
-    def selectedName(self):
+    def SelectedName(self):
         """Currently selected source name."""
         return self.stored['SelectedSource']['name']
 
     @property
-    def activeIndex(self):
+    def ActiveIndex(self):
         """Index of the currently active source."""
         return self.stored['ActiveSource']['index']
 
     @property
-    def activeName(self):
+    def ActiveName(self):
         """Name of the currently active source."""
         return self.stored['ActiveSource']['name']
 
@@ -377,11 +377,11 @@ class Sourcerer(CallbacksExt):
         self.transitionState = TransitionState.IDLE
 
         self.DoCallback('onTransitionComplete', {
-            'index': self.activeIndex,
-            'name': self.activeName
+            'index': self.ActiveIndex,
+            'name': self.ActiveName
         })
 
-        self._log('TransitionComplete', {'index': self.activeIndex, 'name': self.activeName})
+        self._log('TransitionComplete', {'index': self.ActiveIndex, 'name': self.ActiveName})
 
         # Process next item in queue if any
         if self.PendingQueue:
@@ -392,11 +392,11 @@ class Sourcerer(CallbacksExt):
         """Called when the current source finishes (timer ends, video ends, etc.).
         Hook this up to source timer/video completion events."""
         self.DoCallback('onSourceDone', {
-            'index': self.activeIndex,
-            'name': self.activeName
+            'index': self.ActiveIndex,
+            'name': self.ActiveName
         })
 
-        self._log('SourceDone', {'index': self.activeIndex, 'name': self.activeName})
+        self._log('SourceDone', {'index': self.ActiveIndex, 'name': self.ActiveName})
 
     def ClearPendingQueue(self):
         """Clear all pending source switches."""
@@ -515,7 +515,7 @@ class Sourcerer(CallbacksExt):
         self.stored['SelectedSource']['name'] = ''
 
         # add a default source (skip safety check since we just confirmed)
-        self._addSourceInternal()
+        self._addSource()
         self._updateSourceList()
 
         self._log('Init', {'method': 'InitSources'})
@@ -623,7 +623,7 @@ class Sourcerer(CallbacksExt):
             self.UpdateSelectedSourceComp()
 
         # if we're editing the active source, update the active source comp in real-time
-        if source == self.activeIndex:
+        if source == self.ActiveIndex:
             active_comp = self.ownerComp.op('source' + str(self.stored['State']))
             self.UpdateSourceCompQuick(active_comp, source, active=True, store_changes=False)
 
@@ -670,29 +670,44 @@ class Sourcerer(CallbacksExt):
         self._updateSourceList()
         return source
 
-    def _addSourceInternal(self, source_type=None, source_path=None, source_name=None):
+    def GetDefaultSource(self):
+        """Get a source template for customization.
+
+        Returns a new dict that can be modified and passed to AddSource().
+
+        Example:
+            source = op('Sourcerer').GetDefaultSource()
+            source['Settings']['Name'] = 'My Source'
+            source['Settings']['Transitiontype'] = 'blur'
+            source['File']['File'] = '/path/to/video.mp4'
+            op('Sourcerer').AddSource(source=source)
+        """
+        return self._getSourceTemplate('defaultSource')
+
+    def _addSource(self, source=None, source_type=None, source_path=None, source_name=None):
         """Internal add source without safety check. Used by InitSources."""
         # get the selected source index
         s = self.stored['SelectedSource']['index']
 
-        # always use the default template
-        source = self._getSourceTemplate('defaultSource')
+        # use provided source or default template
+        if source is None:
+            source = self._getSourceTemplate('defaultSource')
 
-        # set the source type and path if provided
-        if source_type == 'file':
-            source['Settings']['Sourcetype'] = 'file'
-            if source_path is not None:
-                source['File']['File'] = source_path
+            # set the source type and path if provided
+            if source_type == 'file':
+                source['Settings']['Sourcetype'] = 'file'
+                if source_path is not None:
+                    source['File']['File'] = source_path
 
-        elif source_type == 'top':
-            source['Settings']['Sourcetype'] = 'top'
-            if source_path is not None:
-                source['TOP']['Top'] = source_path
+            elif source_type == 'top':
+                source['Settings']['Sourcetype'] = 'top'
+                if source_path is not None:
+                    source['TOP']['Top'] = source_path
 
-        # source_type=None leaves Sourcetype at its default value (likely 'none')
+            # source_type=None leaves Sourcetype at its default value (likely 'none')
 
-        # set the name - use provided name or default to "Source"
-        source['Settings']['Name'] = source_name if source_name is not None else 'new_source'
+            # set the name - use provided name or default to "Source"
+            source['Settings']['Name'] = source_name if source_name is not None else 'new_source'
 
         source = self._checkUniqueName(source)
 
@@ -709,11 +724,20 @@ class Sourcerer(CallbacksExt):
 
         self._log('AddSource', {'index': insert_index, 'name': source['Settings']['Name']})
 
-    def AddSource(self, source_type=None, source_path=None, source_name=None):
+    def AddSource(self, source=None, source_type=None, source_path=None, source_name=None):
+        """Add a new source.
+
+        Args:
+            source: Optional complete source dict (from GetDefaultSource()).
+                    When provided, other arguments are ignored.
+            source_type: 'file' or 'top' (ignored if source is provided)
+            source_path: Path to file or TOP (ignored if source is provided)
+            source_name: Display name (ignored if source is provided)
+        """
         # Confirm if safety is on
         if not self._confirmSafetyAction('Add Source'):
             return
-        self._addSourceInternal(source_type, source_path, source_name)
+        self._addSource(source, source_type, source_path, source_name)
         return
 
     def _DropSource(self, args):

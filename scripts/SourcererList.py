@@ -62,7 +62,7 @@ class SourcererList:
 
     def getSourceNames(self):
         """Get list of source names from storage."""
-        return ext.SOURCERER.sourceNames
+        return op(self.ownerComp.par.Sourcerer).SourceNames
 
     def getSourceName(self, index):
         """Get name of source at given index."""
@@ -73,11 +73,11 @@ class SourcererList:
 
     def getSelectedIndex(self):
         """Get currently selected source index."""
-        return ext.SOURCERER.selectedIndex
+        return op(self.ownerComp.par.Sourcerer).SelectedIndex
 
     def getActiveName(self):
         """Get the name of the currently active source."""
-        return ext.SOURCERER.activeName
+        return op(self.ownerComp.par.Sourcerer).ActiveName
 
     def InitData(self):
         """Initialize/rebuild the list data and refresh display.
@@ -225,12 +225,12 @@ class SourcererList:
         if start and comp.panel.lselect:
             self.dragRow = True
             self.endRow = startRow
-            ext.SOURCERER.SelectSource(source_index)
+            op(self.ownerComp.par.Sourcerer).SelectSource(source_index)
 
         # --- START: Right click for context menu ---
         elif start and comp.panel.rselect:
             # Select the row first
-            ext.SOURCERER.SelectSource(source_index)
+            op(self.ownerComp.par.Sourcerer).SelectSource(source_index)
 
             # Open context menu
             self._openContextMenu(source_index)
@@ -246,21 +246,21 @@ class SourcererList:
 
                 if endRow == 0:
                     # Dropped on header - move to position 0
-                    ext.SOURCERER.MoveSource(from_index, 0)
+                    op(self.ownerComp.par.Sourcerer).MoveSource(from_index, 0)
                     did_move = True
                 elif endRow == -1:
                     # Dropped past last row - move to end
-                    ext.SOURCERER.MoveSource(from_index, num_sources)
+                    op(self.ownerComp.par.Sourcerer).MoveSource(from_index, num_sources)
                     did_move = True
                 elif endRow > 0:
                     # Dropped on a data row
                     to_index = endRow - 1
 
                     if self.dropType == 'above':
-                        ext.SOURCERER.MoveSource(from_index, to_index)
+                        op(self.ownerComp.par.Sourcerer).MoveSource(from_index, to_index)
                         did_move = True
                     elif self.dropType == 'below':
-                        ext.SOURCERER.MoveSource(from_index, to_index + 1)
+                        op(self.ownerComp.par.Sourcerer).MoveSource(from_index, to_index + 1)
                         did_move = True
 
             # Reset drop target visuals
@@ -389,20 +389,20 @@ class SourcererList:
         source_index = info['details']['source_index']
 
         if action == 'Trigger':
-            ext.SOURCERER.SwitchToSource(source_index)
+            op(self.ownerComp.par.Sourcerer).SwitchToSource(source_index)
         elif action == 'Copy':
-            self.clipboard = ext.SOURCERER.CopySourceData(source_index)
+            self.clipboard = op(self.ownerComp.par.Sourcerer).CopySourceData(source_index)
         elif action == 'Paste':
             if self.clipboard is not None:
-                ext.SOURCERER.PasteSourceData(source_index, self.clipboard)
+                op(self.ownerComp.par.Sourcerer).PasteSourceData(source_index, self.clipboard)
         elif action == 'Delete':
-            ext.SOURCERER.DeleteSource()
+            op(self.ownerComp.par.Sourcerer).DeleteSource()
         elif action == 'Import':
-            ext.SOURCERER.Import()
+            op(self.ownerComp.par.Sourcerer).Import()
         elif action == 'Export Selected':
-            ext.SOURCERER.ExportSelected()
+            op(self.ownerComp.par.Sourcerer).ExportSelected()
         elif action == 'Export All':
-            ext.SOURCERER.ExportAll()
+            op(self.ownerComp.par.Sourcerer).ExportAll()
 
     def onRadio(self, comp, row, col, prevRow, prevCol):
         return
@@ -414,7 +414,7 @@ class SourcererList:
         """Handle inline editing (rename)."""
         if row > 0:
             source_index = row - 1
-            ext.SOURCERER.RenameSource(source_index, val)
+            op(self.ownerComp.par.Sourcerer).RenameSource(source_index, val)
         return
 
     def onDragHover(self, comp, info):
@@ -434,5 +434,5 @@ class SourcererList:
     def onDrop(self, comp, info):
         """Handle external file/TOP drops."""
         dragItems = info.get('dragItems', [])
-        ext.SOURCERER._DropSource(dragItems)
+        op(self.ownerComp.par.Sourcerer)._DropSource(dragItems)
         return {'droppedOn': comp}

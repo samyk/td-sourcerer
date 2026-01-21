@@ -325,31 +325,6 @@ class Sourcerer(CallbacksExt):
 
         source_comp.Start()
 
-        # # set the timers and reload the movie
-        # source_type = source_data['Settings']['Sourcetype']
-
-        # source_comp.op('count1').par.resetpulse.pulse()
-        # source_comp.op('timerFile').par.initialize.pulse()
-        # source_comp.op('timerTOP').par.initialize.pulse()
-
-        # if source_type == 'file':
-        #     source_comp.op('moviefilein0').par.reloadpulse.pulse()
-
-        #     done_on = source_data['File']['Doneonfile']
-        #     if done_on == 'timer':
-        #         source_comp.op('startTimerFile').run(delayFrames=1)
-
-        # else:
-        #     done_on = source_data['TOP']['Doneontop']
-        #     if done_on == 'timer':
-        #         source_comp.op('startTimerTOP').run(delayFrames=1)
-
-        #     cue_vid = source_data['TOP']['Enablecuetop']
-
-        #     if cue_vid:
-        #         vid = source_data['TOP']['Cuetop']
-        #         op(vid).par.cuepulse.pulse()
-
         # set the transition
         settings = source_data['Settings']
         tcomp_par = self.transitionComp.par
@@ -493,7 +468,7 @@ class Sourcerer(CallbacksExt):
         f = ui.chooseFile(load=False, fileTypes=['json'], title='Export Sources')
 
         if f is not None:
-            sources = self.stored['Sources'].getRaw()
+            sources = self.stored['Sources']
 
             with open(f, 'w') as json_file:
                 json.dump(sources, json_file)
@@ -504,7 +479,7 @@ class Sourcerer(CallbacksExt):
 
         if f is not None:
             selected_source = self.stored['SelectedSource']['index']
-            sources = [self.stored['Sources'][selected_source].getRaw()]
+            sources = [self.stored['Sources'][selected_source]]
 
             with open(f, 'w') as json_file:
                 json.dump(sources, json_file)

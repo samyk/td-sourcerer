@@ -368,7 +368,7 @@ class SourcererList:
 
     def _openContextMenu(self, source_index):
         """Open right-click context menu."""
-        items = ['Trigger', 'Copy', 'Paste', 'Delete', '', 'Import', 'Export Selected', 'Export All']
+        items = ['Trigger', 'Copy', 'Paste', 'Delete', 'Import', 'Export Selected', 'Export All']
         disabled = []
 
         # Disable paste if clipboard is empty
@@ -380,6 +380,7 @@ class SourcererList:
             callback=self._onContextMenuSelect,
             callbackDetails={'source_index': source_index},
             disabledItems=disabled,
+            dividersAfterItems=['Delete'],
         )
 
     def _onContextMenuSelect(self, info):

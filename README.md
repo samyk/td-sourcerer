@@ -16,13 +16,16 @@ Sourcerer Lite is a streamlined media management component for TouchDesigner tha
 
 - Centralized source management with a list-based interface
 - Support for file-based media and TOP-based generative content
-- Built-in transitions with customizable timing and easing
+- Built-in transitions with customizable timing and easing (Dissolve, Dip, Slide, Wipe, Blur, File, TOP)
 - Post-processing effects (crop, tile, color correction, transform)
-- Follow actions for automated playback sequences
-- Transition queue system with optional bypass
-- Real-time display properties (timecode, progress, loop count)
+- Follow actions for automated playback sequences with early transition triggering
+- Transition queue system with optional bypass and state machine management
+- Real-time display properties (timecode, progress, loop count, time remaining, next source)
 - Callback system for integration with external logic
 - Import/export functionality for source presets
+- Safety mode for preventing accidental destructive actions
+- Internal logging with optional external Logger integration
+- Dependable properties for reactive UI updates
 
 ## Usage
 
@@ -96,17 +99,31 @@ Active sources expose real-time display properties that can be bound to UI eleme
 | Property | Description |
 |----------|-------------|
 | `Timecode` | Current playback position (HH:MM:SS:FF) |
-| `TimeRemaining` | Time until source completes |
-| `Progress` | Playback progress (0-100%) |
-| `LoopCount` | Number of completed loops (file sources) |
+| `TimeRemaining` | Time until source completes (varies by done condition) |
+| `Progress` | Playback progress (0-100%, varies by done condition) |
+| `LoopCount` | Number of completed loops (file sources only) |
 | `LoopsRemaining` | Loops remaining in play_n_times mode |
 | `Next` | Name of the next source based on follow action |
+
+**Display behavior by source type and done condition:**
+
+| Source Type | Done Condition | Progress/TimeRemaining Based On |
+|-------------|----------------|--------------------------------|
+| File | play_n_times | Total progress across all loops |
+| File | timer | Timer progress |
+| File | none/manual | Single-loop file progress |
+| TOP | timer | Timer progress |
+| TOP | none/manual | N/A |
 
 Access via the active source component:
 ```python
 op('Sourcerer').ActiveSourceComp.Timecode
 op('Sourcerer').ActiveSourceComp.Progress
+op('Sourcerer').ActiveSourceComp.TimeRemaining
+op('Sourcerer').ActiveSourceComp.Next
 ```
+
+Display updates can be disabled for performance via **Update Display** in the Settings page.
 
 ## Transitions
 
@@ -120,9 +137,19 @@ Each source defines the transition used when switching **to** that source. The t
 | **Dip** | Fade to a color, then fade to the incoming source |
 | **Slide** | Push content in a specified direction (left, right, up, down) |
 | **Wipe** | Hard-edge reveal in a specified direction |
-| **Blur** | Crossfade with blur peaking at midpoint |
+| **Blur** | Crossfade with blur peaking at midpoint (13-tap Gaussian kernel) |
 | **File** | Luma matte transition from a file (black to white gradient) |
 | **TOP** | Luma matte transition from a TOP operator |
+
+**Transition-specific parameters:**
+
+| Transition | Parameter | Description |
+|------------|-----------|-------------|
+| Dip | Dip Color | Color to fade through |
+| Slide/Wipe | Transition Direction | Direction of movement (left, right, up, down) |
+| Blur | Blur Amount | Maximum blur radius multiplier (default: 8.0) |
+| File | Transition File | Path to luma matte image |
+| TOP | Transition TOP | Path to TOP operator providing luma matte |
 
 ### Transition Timing
 
@@ -183,6 +210,52 @@ Callbacks are defined in the callbacks script at the root of the Sourcerer compo
 | `onSwitchToSource` | index, name, source | Source switch initiated |
 | `onTransitionComplete` | index, name | Transition animation completed |
 
+## Logging
+
+Sourcerer maintains an internal log of events with color-coded entries for easy debugging. The log stores the 10 most recent entries.
+
+**Logged events:**
+- `SwitchToSource` - Source switch initiated
+- `TransitionComplete` - Transition animation finished
+- `SourceDone` - Source finished playing
+- `AddSource` / `DeleteSource` - Source list changes
+- `RenameSource` / `MoveSource` - Source modifications
+- `StoreDefault` - Default template updated
+- `Init` - Component initialization
+- `FileOpenFailed` - File failed to open (logged as ERROR)
+
+### External Logger Integration
+
+Sourcerer can forward log entries to an external TD Logger component for centralized logging:
+
+1. Enable **Enable Logging** in the Settings page
+2. Set the **Logger** parameter to your Logger component
+
+Log entries are forwarded with appropriate levels:
+- `INFO` - Normal operations (switch, add, delete, etc.)
+- `WARNING` - Potential issues
+- `ERROR` - Failures (file open failed, etc.)
+
+## Safety Mode
+
+Safety mode prevents accidental destructive actions by requiring confirmation dialogs.
+
+**Protected actions:**
+- Add Source
+- Delete Source
+- Rename Source
+- Move Source
+- Paste Source
+- Initialize Sources
+
+Toggle safety mode:
+```python
+op('Sourcerer').ToggleSafety()
+is_safe = op('Sourcerer').Safety  # Boolean
+```
+
+When safety is enabled, protected actions will show a confirmation dialog before proceeding.
+
 ## Parameter Reference
 
 ### Sourcerer Settings
@@ -195,10 +268,14 @@ Callbacks are defined in the callbacks script at the root of the Sourcerer compo
 | Global Transition Time | Default transition duration |
 | Enable Pending Queue | Queue source switches during transitions |
 | Update Display | Enable/disable display property updates (performance toggle) |
+| Enable Logging | Forward log entries to external Logger component |
+| Logger | Reference to TD Logger component |
 | Import | Import sources from JSON |
 | Export All | Export all sources to JSON |
 | Export Selected | Export selected source to JSON |
 | Export Range | Export a range of sources |
+| Init Sources | Reset all sources to default state |
+| Clear Pending Queue | Clear all queued source switches |
 | Edit Callbacks Script | Open the callbacks script |
 
 ### Source Settings
@@ -210,6 +287,7 @@ Callbacks are defined in the callbacks script at the root of the Sourcerer compo
 | Transition Type | Dissolve, Dip, Slide, Wipe, Blur, File, or TOP |
 | Transition Direction | Direction for Slide/Wipe transitions |
 | Dip Color | Color for Dip transition |
+| Blur Amount | Maximum blur radius multiplier for Blur transition (default: 8.0) |
 | Transition File | File path for File transition |
 | Transition TOP | TOP path for TOP transition |
 | Use Global Transition Time | Use global setting instead of per-source |
@@ -292,3 +370,79 @@ Callbacks are defined in the callbacks script at the root of the Sourcerer compo
 | Translate | X/Y offset |
 | Scale | X/Y scale |
 | Rotate | Rotation angle |
+
+## API Reference
+
+### Public Methods
+
+| Method | Description |
+|--------|-------------|
+| `SwitchToSource(source, force=False)` | Switch to a source by index or name. Use `force=True` to clear queue and switch immediately. |
+| `AddSource(source=None, source_type=None, source_path=None, source_name=None)` | Add a new source. Pass a complete source dict or individual parameters. |
+| `DeleteSource()` | Delete the currently selected source. |
+| `RenameSource(index, new_name)` | Rename a source at the given index. |
+| `MoveSource(from_index, to_index)` | Move a source from one position to another. |
+| `SelectSource(index)` | Select a source by index (for editing). |
+| `CopySourceData(index)` | Copy source data at index (returns dict). |
+| `PasteSourceData(index, data)` | Paste source data after the given index. |
+| `GetDefaultSource()` | Get a source template dict for customization. |
+| `DropSource(args)` | Handle dropped files/TOPs (used by list component). |
+| `Import()` | Open import dialog for JSON source presets. |
+| `ExportAll()` | Export all sources to JSON file. |
+| `ExportSelected()` | Export selected source to JSON file. |
+| `ExportRange(range_start, range_end)` | Export a range of sources to JSON file. |
+| `ClearPendingQueue()` | Clear all pending source switches. |
+| `SkipToLastPending()` | Clear queue but keep last item (jump to final destination). |
+| `ToggleSafety()` | Toggle safety mode on/off. |
+| `ClearLog()` | Clear all log entries. |
+| `InitSources(force_confirm=False)` | Reset all sources to initial state. |
+| `InitData()` | Reset to clean state with one default source. |
+
+### Public Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Sources` | list | List of all source data dictionaries (read-only). |
+| `SourceNames` | list | List of all source names (dependable). |
+| `SelectedIndex` | int | Index of currently selected source (dependable). |
+| `SelectedName` | str | Name of currently selected source. |
+| `ActiveIndex` | int | Index of currently active (playing) source. |
+| `ActiveName` | str | Name of currently active source (dependable). |
+| `ActiveSourceComp` | COMP | Reference to the active source component. |
+| `isTransitioning` | bool | Whether a transition is in progress. |
+| `isQueueEnabled` | bool | Whether pending queue is enabled. |
+| `isEditingActive` | bool | Whether selected source is the active source. |
+| `PendingQueue` | list | List of pending source switches (dependable). |
+| `Safety` | bool | Whether safety mode is enabled. |
+| `State` | int | Current switcher state (0 or 1, dependable). |
+
+### Dependable Properties
+
+The following properties support TouchDesigner's dependency system for reactive UI updates:
+
+- `SourceNames` - Updates when sources are added, deleted, renamed, or reordered
+- `SelectedIndex` - Updates when selection changes
+- `ActiveName` - Updates when active source changes
+- `PendingQueue` - Updates when queue changes
+
+Bind to these properties in your UI components for automatic updates:
+```python
+# In a parameter expression
+op('Sourcerer').SourceNames
+
+# In a script
+op('Sourcerer').SourceNames.dependValue
+```
+
+### Source Component Properties
+
+Active source components expose display properties:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Timecode` | str | Current playback position (HH:MM:SS:FF) |
+| `TimeRemaining` | str | Time until completion |
+| `Progress` | float/str | Playback progress (0-100) or 'N/A' |
+| `LoopCount` | int/str | Completed loops or 'N/A' |
+| `LoopsRemaining` | int/str | Remaining loops or 'N/A' |
+| `Next` | str | Name of next source or 'N/A' |

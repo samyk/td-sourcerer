@@ -1,10 +1,15 @@
-# Author: Matthew Wachter
-# License: MIT
-# SourcererLite - Optimized version storing only parameter values (no TDJSON)
+"""
+Sourcerer Lite - Media source management for TouchDesigner.
+
+A streamlined component for managing, switching, and transitioning between
+file-based media and TOP-based generative content.
+
+Author: Matthew Wachter
+License: MIT
+"""
 
 import json
 import os
-from pprint import pprint
 from TDStoreTools import StorageManager, DependList
 import TDFunctions as TDF
 from CallbacksExt import CallbacksExt
@@ -17,8 +22,14 @@ class TransitionState:
 
 
 class Sourcerer(CallbacksExt):
+    """
+    Main Sourcerer extension for managing media sources and transitions.
+
+    Provides centralized source management with a list-based interface,
+    built-in transitions, follow actions, and real-time display properties.
+    """
+
     def __init__(self, ownerComp):
-        # The component to which this extension is attached
         self.ownerComp = ownerComp
         
         self.callbackDat = self.ownerComp.par.Callbackdat.eval()
@@ -70,18 +81,15 @@ class Sourcerer(CallbacksExt):
         # State machine for transitions
         self.transitionState = TransitionState.IDLE
 
-        # Pending queue as a dependable property for UI visualization
+        # Dependable properties for UI binding
         TDF.createProperty(self, 'PendingQueue', value=[], dependable=True, readOnly=False)
-
-        # Dependable properties for external UI components (lists, etc.)
-        # Initialize with current stored data (not empty defaults)
         source_names = [str(s['Settings']['Name']) for s in self.stored['Sources']]
         TDF.createProperty(self, 'SourceNames', value=source_names, dependable=True, readOnly=False)
         TDF.createProperty(self, 'SelectedIndex', value=self.stored['SelectedSource']['index'], dependable=True, readOnly=False)
         TDF.createProperty(self, 'ActiveName', value=self.stored['ActiveSource']['name'], dependable=True, readOnly=False)
 
     # -------------------------------------------------------------------------
-    # Public Properties (clean interface for other components like lists)
+    # Properties
     # -------------------------------------------------------------------------
 
     @property
@@ -147,7 +155,7 @@ class Sourcerer(CallbacksExt):
     # Log colors (RGB 0-255) based on list color palette
     LOG_COLORS = {
         'time': (178, 178, 178),        # label_font gray
-        'SwitchToSource': (51, 127, 204),      # blue
+        'SwitchToSource': (51, 127, 204),       # blue
         'TransitionComplete': (140, 220, 180),  # green
         'SourceDone': (255, 200, 50),           # yellow
         'StoreDefault': (200, 150, 255),        # purple
@@ -156,7 +164,8 @@ class Sourcerer(CallbacksExt):
         'RenameSource': (100, 200, 200),        # cyan
         'MoveSource': (100, 150, 255),          # light blue
         'Init': (200, 200, 200),                # gray
-        'data': (255, 255, 255),        # white
+        'FileOpenFailed': (255, 80, 80),        # bright red for errors
+        'data': (255, 255, 255),                # white
     }
 
     def _log(self, event, data, level='INFO'):
@@ -260,6 +269,15 @@ class Sourcerer(CallbacksExt):
         self.SourceNames = [str(s['Settings']['Name']) for s in self.stored['Sources']]
 
     def _getSource(self, source):
+        """
+        Look up a source by index or name.
+
+        Args:
+            source: Source index (int) or name (str).
+
+        Returns:
+            Tuple of (source_data, index, name) or (None, None, None) if not found.
+        """
         source_json = None
         name = None
         index = None
@@ -320,36 +338,28 @@ class Sourcerer(CallbacksExt):
         self._beginTransition(source)
 
     def _beginTransition(self, source):
-        """Internal: Start the actual transition to a source."""
+        """Start the actual transition to a source."""
         self.transitionState = TransitionState.TRANSITIONING
 
         state = self.stored['State']
         next_state = 1 - state
-
         source_comp = self.ownerComp.op('source' + str(next_state))
-
         source_data, index, name = self._getSource(source)
 
         if source_data is None:
-            # Invalid source, abort transition
             self.transitionState = TransitionState.IDLE
             return
 
-        # update the source comp
         self.UpdateSourceCompQuick(source_comp, index)
-
         source_comp.Start()
 
-        # set the transition
+        # Configure transition parameters
         settings = source_data['Settings']
         tcomp_par = self.transitionComp.par
-
         trans_type = settings['Transitiontype']
         tcomp_par.Transitiontype = trans_type
 
-        # Set transition-specific parameters
         if trans_type == 'dip':
-            # Dipcolor is a color parameter (r/g/b/a suffixes)
             self._setParVal('Dipcolor', settings['Dipcolor'], self.transitionComp)
         elif trans_type in ('slide', 'wipe'):
             tcomp_par.Transitiondirection = settings['Transitiondirection']
@@ -360,31 +370,28 @@ class Sourcerer(CallbacksExt):
         elif trans_type == 'blur':
             tcomp_par.Bluramount = settings.get('Bluramount', 8.0)
 
-        # set the transition time
         if settings['Useglobaltransitiontime']:
             trans_time = self.ownerComp.par.Globaltransitiontime.eval()
         else:
             trans_time = settings['Transitiontime']
         tcomp_par.Transitiontime = trans_time
 
-        # set the progress shape
         trans_shape = settings['Transitionshape']
         tcomp_par.Transitionshape = trans_shape
         if trans_shape == 'custom':
             tcomp_par.Customtransitionshape = settings['Customtransitionshape']
 
-        # update the stored information
+        # Update state
         self.stored['State'] = next_state
         self.stored['ActiveSource']['index'] = index
         self.stored['ActiveSource']['name'] = name
-        self.ActiveName = name  # Update dependable property
+        self.ActiveName = name
 
         self.DoCallback('onSwitchToSource', {
             'index': index,
             'name': name,
             'source': source_data
         })
-
         self._log('SwitchToSource', {'index': index, 'name': name})
 
     def OnTransitionComplete(self):
@@ -426,117 +433,112 @@ class Sourcerer(CallbacksExt):
             self.PendingQueue.append(last)
 
     def SwitchToSelectedSource(self):
-        s = self.stored['SelectedSource']['index']
-        self.SwitchToSource(s)
+        """Switch to the currently selected source."""
+        self.SwitchToSource(self.stored['SelectedSource']['index'])
 
     def DelaySwitchToSource(self, source, delay=0):
+        """Switch to a source after a delay in frames."""
         run(self.SwitchToSource, source, delayFrames=delay)
 
     def RunCommand(self, command):
+        """Execute a Python command string."""
         run(command)
 
-    # SOURCES
+    # -------------------------------------------------------------------------
+    # Import/Export
+    # -------------------------------------------------------------------------
+
     def Import(self):
+        """Import sources from a JSON file with location selection dialog."""
         f = ui.chooseFile(load=True, fileTypes=['json'], title='Import Sources')
-
-        if f is not None:
-            with open(f, 'r') as json_file:
-                imported_sources = json.load(json_file)
-
-                if imported_sources:
-                    a = ui.messageBox('Sourcerer Import Location', 'Select a location:', buttons=['Prepend', 'Insert (above selected)', 'Append'])
-
-                    sources = []
-                    sources.extend(self.stored['Sources'])
-
-                    # prepend
-                    if a == 0:
-                        new_sources = imported_sources.copy()
-                        new_sources.extend(sources)
-                        self.stored['Sources'] = new_sources
-
-                        for i in range(0, len(imported_sources)):
-                            self._checkUniqueName(self.stored['Sources'][i], exclude_index=i)
-
-                    # insert
-                    elif a == 1:
-                        s = self.stored['SelectedSource']['index']
-                        new_sources = sources[:s].copy()
-                        new_sources.extend(imported_sources)
-                        new_sources.extend(sources[s:].copy())
-                        self.stored['Sources'] = new_sources
-
-                        for i in range(s, s + len(imported_sources)):
-                            self._checkUniqueName(self.stored['Sources'][i], exclude_index=i)
-
-                    # append
-                    elif a == 2:
-                        new_sources = sources.copy()
-                        new_sources.extend(imported_sources)
-                        self.stored['Sources'] = new_sources
-
-                        for i in range(len(sources), len(new_sources)):
-                            self._checkUniqueName(self.stored['Sources'][i], exclude_index=i)
-                    self._updateSourceList()
-        return
-
-    def ExportAll(self):
-        f = ui.chooseFile(load=False, fileTypes=['json'], title='Export Sources')
-
-        if f is not None:
-            sources = self.stored['Sources']
-
-            with open(f, 'w') as json_file:
-                json.dump(sources, json_file)
-        return
-
-    def ExportSelected(self):
-        f = ui.chooseFile(load=False, fileTypes=['json'], title='Export Sources')
-
-        if f is not None:
-            selected_source = self.stored['SelectedSource']['index']
-            sources = [self.stored['Sources'][selected_source]]
-
-            with open(f, 'w') as json_file:
-                json.dump(sources, json_file)
-        return
-
-    def ExportRange(self, range_start=None, range_end=None):
-        f = ui.chooseFile(load=False, fileTypes=['json'], title='Export Sources')
-
-        if f is not None:
-            if range_start is None:
-                range_start = self.ownerComp.par.Exportrangeval1
-            if range_end is None:
-                range_end = self.ownerComp.par.Exportrangeval2
-
-            sources = self.stored['Sources'].getRaw()
-            sources = sources[range_start:range_end+1]
-
-            with open(f, 'w') as json_file:
-                json.dump(sources, json_file)
-        return
-
-    # set the sources to their initial state
-    def InitSources(self, force_confirm=False):
-        # Confirm action (force_confirm=True always prompts)
-        if not self._confirmSafetyAction('Initialize Sources (this will clear all sources)', force=force_confirm):
+        if f is None:
             return
 
-        # clear the sources list
-        self.stored['Sources'] = []
+        with open(f, 'r') as json_file:
+            imported_sources = json.load(json_file)
 
-        # set the selected source to 0
-        self.stored['SelectedSource']['index'] = 0
-        self.stored['SelectedSource']['name'] = ''
-        self.SelectedIndex = 0  # Update dependable property
+        if not imported_sources:
+            return
 
-        # add a default source (skip safety check since we just confirmed)
-        self._addSource()
+        location = ui.messageBox(
+            'Sourcerer Import Location',
+            'Select a location:',
+            buttons=['Prepend', 'Insert (above selected)', 'Append']
+        )
+        sources = list(self.stored['Sources'])
+
+        if location == 0:  # Prepend
+            new_sources = imported_sources.copy()
+            new_sources.extend(sources)
+            self.stored['Sources'] = new_sources
+            for i in range(len(imported_sources)):
+                self._checkUniqueName(self.stored['Sources'][i], exclude_index=i)
+
+        elif location == 1:  # Insert
+            s = self.stored['SelectedSource']['index']
+            new_sources = sources[:s] + imported_sources + sources[s:]
+            self.stored['Sources'] = new_sources
+            for i in range(s, s + len(imported_sources)):
+                self._checkUniqueName(self.stored['Sources'][i], exclude_index=i)
+
+        elif location == 2:  # Append
+            new_sources = sources + imported_sources
+            self.stored['Sources'] = new_sources
+            for i in range(len(sources), len(new_sources)):
+                self._checkUniqueName(self.stored['Sources'][i], exclude_index=i)
+
         self._updateSourceList()
 
+    def ExportAll(self):
+        """Export all sources to a JSON file."""
+        f = ui.chooseFile(load=False, fileTypes=['json'], title='Export Sources')
+        if f is None:
+            return
+
+        with open(f, 'w') as json_file:
+            json.dump(self.stored['Sources'], json_file)
+
+    def ExportSelected(self):
+        """Export the selected source to a JSON file."""
+        f = ui.chooseFile(load=False, fileTypes=['json'], title='Export Sources')
+        if f is None:
+            return
+
+        selected = self.stored['SelectedSource']['index']
+        with open(f, 'w') as json_file:
+            json.dump([self.stored['Sources'][selected]], json_file)
+
+    def ExportRange(self, range_start=None, range_end=None):
+        """Export a range of sources to a JSON file."""
+        f = ui.chooseFile(load=False, fileTypes=['json'], title='Export Sources')
+        if f is None:
+            return
+
+        if range_start is None:
+            range_start = self.ownerComp.par.Exportrangeval1
+        if range_end is None:
+            range_end = self.ownerComp.par.Exportrangeval2
+
+        sources = self.stored['Sources'].getRaw()[range_start:range_end + 1]
+        with open(f, 'w') as json_file:
+            json.dump(sources, json_file)
+
+    def InitSources(self, force_confirm=False):
+        """Reset all sources to initial state with one default source."""
+        if not self._confirmSafetyAction(
+            'Initialize Sources (this will clear all sources)',
+            force=force_confirm
+        ):
+            return
+
+        self.stored['Sources'] = []
+        self.stored['SelectedSource']['index'] = 0
+        self.stored['SelectedSource']['name'] = ''
+        self.SelectedIndex = 0
+
+        self._addSource()
+        self._updateSourceList()
         self._log('Init', {'method': 'InitSources'})
-        return
 
     def _getSourceTemplate(self, template):
         """Get a source template as a simple value dictionary from a template component."""
@@ -567,18 +569,17 @@ class Sourcerer(CallbacksExt):
     }
 
     def _setParVal(self, par_name, value, target_comp):
-        """Set a parameter value directly on a component."""
+        """Set a parameter value on a component, handling multi-value parameters."""
         if hasattr(target_comp.par, par_name):
             par = getattr(target_comp.par, par_name)
             if isinstance(value, (list, tuple)):
-                # Multi-value parameter
                 for i, p in enumerate(par.tuplet):
                     if i < len(value):
                         p.val = value[i]
             else:
                 par.val = value
         else:
-            # Check for suffix-based parameters (color, xy, etc.)
+            # Handle suffix-based parameters (color, xy, etc.)
             for first_suffix, suffixes in self.PAR_SUFFIXES.items():
                 if hasattr(target_comp.par, par_name + first_suffix):
                     for i, suffix in enumerate(suffixes):
@@ -590,35 +591,26 @@ class Sourcerer(CallbacksExt):
     EXCLUDE_FROM_STORAGE = {'Filelengthframes', 'Filesamplerate'}
 
     def _extractValues(self, comp):
-        """Extract parameter values from a component as a simple dictionary."""
+        """Extract parameter values from a component as a nested dictionary."""
         source_dict = {}
         for page in comp.customPages:
             page_dict = {}
             for par in page.pars:
-                # Skip read-only/derived parameters
                 if par.name in self.EXCLUDE_FROM_STORAGE:
                     continue
-                # Store just the value, handling tuplets
                 if len(par.tuplet) > 1 and par == par.tuplet[0]:
-                    # Multi-value parameter - store as list
-                    # Check tuplet name too
                     if par.tupletName in self.EXCLUDE_FROM_STORAGE:
                         continue
                     page_dict[par.tupletName] = [p.val for p in par.tuplet]
                 elif len(par.tuplet) == 1:
-                    # Single value parameter
                     page_dict[par.name] = par.val
-                # Skip non-first tuplet members (captured above)
             source_dict[page.name] = page_dict
         return source_dict
 
     def UpdateSelectedSourceComp(self):
-        # get the selected source index
+        """Update the selected source component from storage."""
         s = self.stored['SelectedSource']['index']
-
-        # update the source comp
         self.UpdateSourceCompQuick(self.selectedSourceComp, s, active=False, store_changes=True)
-        return
 
     def UpdateSourceCompQuick(self, source_comp, source_index, active=True, store_changes=False):
         """Update a source component with data from storage."""
@@ -628,42 +620,33 @@ class Sourcerer(CallbacksExt):
     def UpdateSourceComp(self, source_comp, source_index, active=True, store_changes=False):
         """Full source update - same as quick in lite version."""
         self.UpdateSourceCompQuick(source_comp, source_index, active, store_changes)
-        return
 
     def StoreSourceToSelected(self, source_comp, update_selected_comp=False):
-        # get the selected source index
+        """Store source component parameters to the selected source in storage."""
         source = self.stored['SelectedSource']['index']
-
         self.StoreSource(source_comp, source)
 
         if update_selected_comp:
             self.UpdateSelectedSourceComp()
 
-        # if we're editing the active source, update the active source comp in real-time
+        # Update active source in real-time if editing it
         if source == self.ActiveIndex:
             active_comp = self.ownerComp.op('source' + str(self.stored['State']))
             self.UpdateSourceCompQuick(active_comp, source, active=True, store_changes=False)
 
         self._updateSourceList()
-        return
 
     def StoreSource(self, source_comp, source):
-        """Store source by extracting parameter values directly."""
+        """Store source component parameters to storage at given index."""
         self.stored['Sources'][source] = self._extractValues(source_comp)
         self._updateSourceList()
-        return
 
     def InitSource(self):
-        # get the default source template
+        """Reset the selected source to default template values."""
         source_dict = self._getSourceTemplate('defaultSource')
-
-        # get the selected source index
         s = self.stored['SelectedSource']['index']
-
-        # store to the selected source
         self.stored['Sources'][s] = source_dict
         self._updateSourceList()
-        return
 
     def _getUniqueName(self, name, exclude_index=None):
         """Get a unique name, optionally excluding an index (for renames)."""
@@ -758,173 +741,121 @@ class Sourcerer(CallbacksExt):
         return
 
     def DropSource(self, args):
-        # for each dropped item
+        """Handle dropped files or TOPs, creating sources for valid items."""
         for dropped in args:
-
-            # file source
             if isinstance(dropped, str):
                 if os.path.isfile(dropped):
-                    source_type = 'file'
-                    source_path = dropped
                     base = os.path.basename(dropped)
                     source_name = os.path.splitext(base)[0]
                     file_ext = os.path.splitext(base)[1][1:]
 
                     if file_ext in tdu.fileTypes['movie'] or file_ext in tdu.fileTypes['image']:
-                        self.AddSource(source_type=source_type, source_path=source_path, source_name=source_name)
+                        self.AddSource(source_type='file', source_path=dropped, source_name=source_name)
 
-            # top source
-            elif hasattr(dropped, 'family'):
-                if dropped.family == 'TOP':
-                    source_type = 'top'
-                    source_path = dropped.path
-                    source_name = dropped.name
-                    self.AddSource(source_type=source_type, source_path=source_path, source_name=source_name)
-
-            else:
-                debug('not valid source type')
-                debug(type(source_type))
-                debug(source_type)
-        return
+            elif hasattr(dropped, 'family') and dropped.family == 'TOP':
+                self.AddSource(source_type='top', source_path=dropped.path, source_name=dropped.name)
 
     def CopySource(self):
-        # get the selected source index
+        """Duplicate the selected source."""
         s = self.stored['SelectedSource']['index']
-
-        # get a copy of the source (deep copy to avoid reference issues)
         source = json.loads(json.dumps(self.stored['Sources'][s]))
-
         source = self._checkUniqueName(source)
-
-        # insert the new source
         self.stored['Sources'].insert(s, source)
-
-        # select the new source
         self.SelectSource(s)
         self._updateSourceList()
-        return
 
     def DeleteSource(self):
-        # Confirm if safety is on
+        """Delete the selected source."""
         if not self._confirmSafetyAction('Delete Source'):
             return
 
-        # get the selected source index
         s = self.stored['SelectedSource']['index']
-        # get the list of sources
-        a = self.stored['Sources']
+        sources = self.stored['Sources']
 
-        if len(a) > 1:
-            # Capture name before deletion for logging
-            deleted_name = a[s]['Settings']['Name']
-            # Check if we're deleting the active source
-            is_active = (self.stored['ActiveSource']['index'] == s)
+        if len(sources) <= 1:
+            self._updateSourceList()
+            return
 
-            # pop the source from the list
-            a.pop(s)
+        deleted_name = sources[s]['Settings']['Name']
+        is_active = (self.stored['ActiveSource']['index'] == s)
 
-            # If we deleted the active source, clear ActiveSource
-            if is_active:
-                self.stored['ActiveSource']['index'] = -1
-                self.stored['ActiveSource']['name'] = ''
-                self.ActiveName = ''  # Update dependable property
+        sources.pop(s)
 
-            # Update ActiveSource index if it was after the deleted source
-            elif self.stored['ActiveSource']['index'] > s:
-                self.stored['ActiveSource']['index'] -= 1
+        if is_active:
+            self.stored['ActiveSource']['index'] = -1
+            self.stored['ActiveSource']['name'] = ''
+            self.ActiveName = ''
+        elif self.stored['ActiveSource']['index'] > s:
+            self.stored['ActiveSource']['index'] -= 1
 
-            # If we deleted the last item, select the new last item
-            if s >= len(a):
-                self.SelectSource(len(a) - 1)
-            else:
-                self.SelectSource(s)
+        if s >= len(sources):
+            self.SelectSource(len(sources) - 1)
+        else:
+            self.SelectSource(s)
 
-            self._log('DeleteSource', {'index': s, 'name': deleted_name})
+        self._log('DeleteSource', {'index': s, 'name': deleted_name})
         self._updateSourceList()
-        return
 
     def RenameSource(self, index, new_name):
         """Rename a source at the given index."""
-        # Confirm if safety is on
         if not self._confirmSafetyAction('Rename Source'):
             return
 
-        if 0 <= index < len(self.stored['Sources']):
-            # Capture old name for logging
-            old_name = self.stored['Sources'][index]['Settings']['Name']
+        if not (0 <= index < len(self.stored['Sources'])):
+            return
 
-            # Get unique name, excluding current index from check
-            name = self._getUniqueName(str(new_name), exclude_index=index)
+        old_name = self.stored['Sources'][index]['Settings']['Name']
+        name = self._getUniqueName(str(new_name), exclude_index=index)
+        self.stored['Sources'][index]['Settings']['Name'] = name
 
-            self.stored['Sources'][index]['Settings']['Name'] = name
+        if self.stored['SelectedSource']['index'] == index:
+            self.stored['SelectedSource']['name'] = name
 
-            # Update SelectedSource name if we renamed the selected source
-            if self.stored['SelectedSource']['index'] == index:
-                self.stored['SelectedSource']['name'] = name
+        if self.stored['ActiveSource']['index'] == index:
+            self.stored['ActiveSource']['name'] = name
+            self.ActiveName = name
 
-            # Update ActiveSource name if we renamed the active source
-            if self.stored['ActiveSource']['index'] == index:
-                self.stored['ActiveSource']['name'] = name
-                self.ActiveName = name  # Update dependable property
-
-            self._updateSourceList()
-            self.UpdateSelectedSourceComp()
-
-            self._log('RenameSource', {'index': index, 'from': old_name, 'to': name})
-        return
+        self._updateSourceList()
+        self.UpdateSelectedSourceComp()
+        self._log('RenameSource', {'index': index, 'from': old_name, 'to': name})
 
     def MoveSource(self, from_index, to_index):
         """Move a source from one position to another."""
-        # Confirm if safety is on
         if not self._confirmSafetyAction('Move Source'):
             return
 
         sources = self.stored['Sources']
-
         if from_index < 0 or from_index >= len(sources):
             return
-        if to_index < 0:
-            to_index = 0
-        if to_index > len(sources):
-            to_index = len(sources)
 
-        # Track if we're moving the active source
+        to_index = max(0, min(to_index, len(sources)))
+
         active_index = self.stored['ActiveSource']['index']
         moving_active = (from_index == active_index)
 
-        # Get the source to move
         source = sources.pop(from_index)
         moved_name = source['Settings']['Name']
 
-        # Adjust to_index if we removed from before it
         if from_index < to_index:
             to_index -= 1
 
-        # Insert at new position
         sources.insert(to_index, source)
 
-        # Update ActiveSource index
+        # Update ActiveSource index based on the move
         if moving_active:
-            # The active source moved to the new position
             self.stored['ActiveSource']['index'] = to_index
         elif active_index >= 0:
-            # Adjust active index if it was affected by the move
             if from_index < active_index <= to_index:
-                # Source moved from before active to after - active shifts down
                 self.stored['ActiveSource']['index'] -= 1
             elif to_index <= active_index < from_index:
-                # Source moved from after active to before - active shifts up
                 self.stored['ActiveSource']['index'] += 1
 
-        # Update selection to follow the moved item
         self.stored['SelectedSource']['index'] = to_index
         self.stored['SelectedSource']['name'] = moved_name
-        self.SelectedIndex = to_index  # Update dependable property
+        self.SelectedIndex = to_index
         self._updateSourceList()
         self.UpdateSelectedSourceComp()
-
         self._log('MoveSource', {'name': moved_name, 'from': from_index, 'to': to_index})
-        return
 
     def CopySourceData(self, index):
         """Copy source data at index for clipboard operations."""
@@ -935,135 +866,97 @@ class Sourcerer(CallbacksExt):
 
     def PasteSourceData(self, index, data):
         """Paste source data after the given index."""
-        # Confirm if safety is on
         if not self._confirmSafetyAction('Paste Source'):
             return
 
         if data is None:
             return
 
-        # Deep copy to avoid reference issues
         new_source = json.loads(json.dumps(data))
-
-        # Ensure unique name
         new_source = self._checkUniqueName(new_source)
-
-        # Insert after the specified index
         self.stored['Sources'].insert(index + 1, new_source)
-
-        # Select the new source
         self.SelectSource(index + 1)
         self._updateSourceList()
-        return
 
     def SelectSource(self, index):
-
-        if index > len(self.stored['Sources'])-1:
+        """Select a source by index for editing."""
+        if index > len(self.stored['Sources']) - 1:
             index = index - 1
 
-        # set the selected source
         self.stored['SelectedSource']['index'] = index
-        self.SelectedIndex = index  # Update dependable property
+        self.SelectedIndex = index
         if 0 <= index < len(self.stored['Sources']):
             self.stored['SelectedSource']['name'] = self.stored['Sources'][index]['Settings']['Name']
         else:
             self.stored['SelectedSource']['name'] = ''
 
-        # update the sources comp
         self.UpdateSelectedSourceComp()
-        return
 
     def SelectSourceUp(self):
-        # get the selected source index
+        """Select the previous source in the list."""
         s = self.stored['SelectedSource']['index']
-
-        # select a source up if it exists
-        if(s > 0):
+        if s > 0:
             self.SelectSource(s - 1)
-        return
 
     def SelectSourceDown(self):
-        # get the selected source index
+        """Select the next source in the list."""
         s = self.stored['SelectedSource']['index']
-
-        # get a list of sources
-        a = self.stored['Sources']
-
-        # select a source down if it exists
-        if(s < len(a) - 1):
-            self.SelectSource(s+1)
-        return
+        if s < len(self.stored['Sources']) - 1:
+            self.SelectSource(s + 1)
 
     def MoveSourceUp(self):
-        # Confirm if safety is on
+        """Move the selected source up one position."""
         if not self._confirmSafetyAction('Move Source Up'):
             return
 
-        # get the selected source index
         s = self.stored['SelectedSource']['index']
-
-        # check if the selected source can go up
-        if(s > 0):
-            # get the source
-            a = self.stored['Sources'][s]
-
-            # delete the selected source
-            self.stored['Sources'].pop(s)
-
-            # insert it again a spot up
-            self.stored['Sources'].insert(s - 1, a)
-
-            # select the source
+        if s > 0:
+            source = self.stored['Sources'].pop(s)
+            self.stored['Sources'].insert(s - 1, source)
             self.SelectSourceUp()
         self._updateSourceList()
-        return
 
     def MoveSourceDown(self):
-        # Confirm if safety is on
+        """Move the selected source down one position."""
         if not self._confirmSafetyAction('Move Source Down'):
             return
 
-        # get the selected source index
         s = self.stored['SelectedSource']['index']
-
-        # get the sources list
-        a = self.stored['Sources']
-
-        # check if the selected source can go down
-        if(s < len(a) - 1):
-            # get the selected source
-            a = self.stored['Sources'][s]
-
-            # delete the selected source
-            self.stored['Sources'].pop(s)
-
-            # insert the source one spot down
-            self.stored['Sources'].insert(s + 1, a)
-
-            # select the source
+        sources = self.stored['Sources']
+        if s < len(sources) - 1:
+            source = sources.pop(s)
+            sources.insert(s + 1, source)
             self.SelectSourceDown()
         self._updateSourceList()
-        return
 
+    # -------------------------------------------------------------------------
+    # Pulse Parameter Handlers
+    # -------------------------------------------------------------------------
 
-    # pulse parameter to open extension
     def pulse_Editextension(self):
+        """Open the extension script for editing."""
         self.ownerComp.op('SourcererLite').par.edit.pulse()
 
     def pulse_Import(self):
+        """Handle Import pulse parameter."""
         self.Import()
 
     def pulse_Exportall(self):
+        """Handle Export All pulse parameter."""
         self.ExportAll()
 
     def pulse_Exportselected(self):
+        """Handle Export Selected pulse parameter."""
         self.ExportSelected()
 
     def pulse_Exportrange(self):
+        """Handle Export Range pulse parameter."""
         self.ExportRange()
 
     def pulse_Initsources(self):
+        """Handle Init Sources pulse parameter."""
         self.InitSources(force_confirm=True)
 
     def pulse_Clearpendingqueue(self):
+        """Handle Clear Pending Queue pulse parameter."""
         self.ClearPendingQueue()

@@ -647,9 +647,9 @@ class Sourcerer(CallbacksExt):
                 if len(par.tuplet) > 1 and par == par.tuplet[0]:
                     if par.tupletName in self.EXCLUDE_FROM_STORAGE:
                         continue
-                    page_dict[par.tupletName] = [p.val for p in par.tuplet]
+                    page_dict[par.tupletName] = [p.eval() for p in par.tuplet]
                 elif len(par.tuplet) == 1:
-                    page_dict[par.name] = par.val
+                    page_dict[par.name] = par.eval()
             source_dict[page.name] = page_dict
         return source_dict
 

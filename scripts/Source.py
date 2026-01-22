@@ -504,6 +504,16 @@ class Source(CallbacksExt):
         """Callback for timer completion."""
         self._handleFollowAction()
 
+    def onDoneCHOPFile(self):
+        """Callback for done CHOP completion for file source."""
+        if str(self.ownerComp.par.Doneonfile) == 'chop':
+            self._handleFollowAction()
+
+    def onDoneCHOPTop(self):
+        """Callback for done CHOP completion for TOP source."""
+        if str(self.ownerComp.par.Doneontop) == 'chop':
+            self._handleFollowAction()
+
     # -------------------------------------------------------------------------
     # Pulse Parameter Handlers
     # -------------------------------------------------------------------------

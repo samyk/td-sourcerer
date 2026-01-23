@@ -1,6 +1,6 @@
 # Sourcerer Lite
 
-**TouchDesigner version 2023.12370**
+**TouchDesigner version 2025.32280**
 
 License: MIT
 

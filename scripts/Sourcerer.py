@@ -90,7 +90,7 @@ class Sourcerer(CallbacksExt):
         self.selectedSourceComp = ownerComp.op('selectedSource')
 
         storedItems = [
-            {'name': 'Sources', 'default': [], 'dependable': False},
+            {'name': 'Sources', 'default': [], 'dependable': True},
             {
                 'name': 'SelectedSource',
                 'default': {'index': 0, 'name': ''},

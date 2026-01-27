@@ -337,7 +337,7 @@ class SourcererList:
         sourcerer = op(self.ownerComp.par.Sourcerer)
 
         if action == 'Trigger':
-            sourcerer.SwitchToSource(source_index)
+            sourcerer.Take(source_index)
         elif action == 'Copy':
             self.clipboard = sourcerer.CopySourceData(source_index)
         elif action == 'Paste' and self.clipboard:

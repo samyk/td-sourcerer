@@ -60,17 +60,17 @@ Use **Save as Default** to store the selected source's settings as the template 
 
 ### Extension Methods
 
-Switch to sources programmatically using the `SwitchToSource()` method:
+Switch to sources programmatically using the `Take()` method:
 
 ```python
 # By index
-op('Sourcerer').SwitchToSource(1)
+op('Sourcerer').Take(1)
 
 # By name
-op('Sourcerer').SwitchToSource('Blackout')
+op('Sourcerer').Take('Blackout')
 
 # Force switch (clears queue, ignores pending queue setting)
-op('Sourcerer').SwitchToSource('Emergency', force=True)
+op('Sourcerer').Take('Emergency', force=True)
 ```
 
 ### Creating Sources Programmatically
@@ -107,7 +107,7 @@ op('Sourcerer').AddSource(source_type='top', source_path='/project1/myTOP', sour
 
 ### Temporary Sources
 
-Switch to a source that doesn't exist in the source list using `SwitchToSourceData()`. This is useful for emergency overrides, one-off content, or dynamically generated sources:
+Switch to a source that doesn't exist in the source list by passing a source data dict directly to `Take()`. This is useful for emergency overrides, one-off content, or dynamically generated sources:
 
 ```python
 # Create a temporary source
@@ -118,13 +118,13 @@ source['Settings']['Transitiontime'] = 0.25
 source['File']['File'] = '/path/to/emergency.mp4'
 
 # Switch to it (clears queue, switches immediately)
-op('Sourcerer').SwitchToSourceData(source)
+op('Sourcerer').Take(source)
 ```
 
 **Temporary source behavior:**
-- `ActiveIndex` is set to -1 (not in the source list)
-- `ActiveName` is set to the source's Name field
-- Always switches immediately (clears pending queue)
+- `ActiveSource['index']` is set to -1 (not in the source list)
+- `ActiveSource['name']` is set to the source's Name field
+- Respects pending queue like normal sources (use `force=True` to bypass)
 - Follow actions are not supported (no index to reference)
 - The source is not added to the list
 
@@ -135,7 +135,7 @@ You can also copy an existing source and modify it:
 source = op('Sourcerer').CopySourceData(0)
 source['Settings']['Name'] = 'Modified Copy'
 source['File']['Speed'] = 2.0  # Double speed
-op('Sourcerer').SwitchToSourceData(source)
+op('Sourcerer').Take(source)
 ```
 
 ### Pending Queue
@@ -290,7 +290,7 @@ Callbacks are defined in the callbacks script at the root of the Sourcerer compo
 |----------|------------|-------------|
 | `onInit` | ownerComp | Component initialized |
 | `onSourceDone` | index, name | Source finished playing |
-| `onSwitchToSource` | index, name, source | Source switch initiated |
+| `onTake` | index, name, source_data | Take initiated |
 | `onTransitionComplete` | index, name | Transition animation completed |
 
 ## Logging
@@ -298,7 +298,7 @@ Callbacks are defined in the callbacks script at the root of the Sourcerer compo
 Sourcerer maintains an internal log of events with color-coded entries for easy debugging. The log stores the 10 most recent entries.
 
 **Logged events:**
-- `SwitchToSource` - Source switch initiated
+- `Take` - Source switch initiated
 - `TransitionComplete` - Transition animation finished
 - `SourceDone` - Source finished playing
 - `AddSource` / `DeleteSource` - Source list changes
@@ -365,7 +365,7 @@ When safety is enabled, protected actions will show a confirmation dialog before
 
 | Parameter | Description |
 |-----------|-------------|
-| Name | Display name (also used for `SwitchToSource()`) |
+| Name | Display name (also used for `Take()`) |
 | Source Type | File or TOP |
 | Transition Type | Dissolve, Dip, Slide, Wipe, Blur, File, or TOP |
 | Transition Direction | Direction for Slide/Wipe transitions |
@@ -460,8 +460,9 @@ When safety is enabled, protected actions will show a confirmation dialog before
 
 | Method | Description |
 |--------|-------------|
-| `SwitchToSource(source, force=False)` | Switch to a source by index or name. Use `force=True` to clear queue and switch immediately. |
-| `SwitchToSourceData(source_data)` | Switch to a temporary source from a dict. Clears queue and switches immediately. ActiveIndex = -1. |
+| `Take(source, force=False)` | Take (switch to) a source by index, name, or source_data dict. Use `force=True` to clear queue and switch immediately. |
+| `TakeSelected()` | Take the currently selected source. |
+| `DelayTake(source, delay=0)` | Take a source after a delay in frames. |
 | `AddSource(source_data=None, source_type=None, source_path=None, source_name=None)` | Add a new source. Pass a complete source dict or individual parameters. |
 | `DeleteSource()` | Delete the currently selected source. |
 | `RenameSource(index, new_name)` | Rename a source at the given index. |
@@ -479,7 +480,7 @@ When safety is enabled, protected actions will show a confirmation dialog before
 | `SkipToLastPending()` | Clear queue but keep last item (jump to final destination). |
 | `ToggleSafety()` | Toggle safety mode on/off. |
 | `ClearLog()` | Clear all log entries. |
-| `InitSources(force_confirm=False)` | Reset all sources to initial state. |
+| `InitData(force_confirm=False)` | Reset to clean state (clears all sources and log). |
 | `InitData()` | Reset to clean state with one default source. |
 
 ### Public Properties
@@ -488,10 +489,8 @@ When safety is enabled, protected actions will show a confirmation dialog before
 |----------|------|-------------|
 | `Sources` | list | List of all source data dictionaries (read-only). |
 | `SourceNames` | list | List of all source names (dependable). |
-| `SelectedIndex` | int | Index of currently selected source (dependable). |
-| `SelectedName` | str | Name of currently selected source. |
-| `ActiveIndex` | int | Index of currently active (playing) source (-1 for temp sources). |
-| `ActiveName` | str | Name of currently active source (dependable). |
+| `SelectedSource` | dict | Selected source info with 'index' and 'name' keys (dependable). |
+| `ActiveSource` | dict | Active source info with 'index' and 'name' keys (dependable). Index is -1 for temp sources. |
 | `ActiveSourceComp` | COMP | Reference to the active source component. |
 | `isTransitioning` | bool | Whether a transition is in progress. |
 | `isQueueEnabled` | bool | Whether pending queue is enabled. |

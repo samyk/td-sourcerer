@@ -391,19 +391,19 @@ class Source(CallbacksExt):
         ext.SOURCERER.OnSourceDone()
 
         if follow_action == 'play_next':
-            ext.SOURCERER.SwitchToSource(ext.SOURCERER.ActiveIndex + 1)
+            ext.SOURCERER.Take(ext.SOURCERER.ActiveIndex + 1)
         elif follow_action == 'goto_index':
             if source_type == 'file':
                 goto_index = self.ownerComp.par.Gotoindexfile
             else:
                 goto_index = self.ownerComp.par.Gotoindextop
-            ext.SOURCERER.SwitchToSource(int(goto_index))
+            ext.SOURCERER.Take(int(goto_index))
         elif follow_action == 'goto_name':
             if source_type == 'file':
                 goto_name = self.ownerComp.par.Gotonamefile
             else:
                 goto_name = self.ownerComp.par.Gotonametop
-            ext.SOURCERER.SwitchToSource(str(goto_name))
+            ext.SOURCERER.Take(str(goto_name))
 
     def onValueChange(self, par, prev):
         """Callback for parameter value changes."""

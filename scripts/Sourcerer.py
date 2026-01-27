@@ -84,15 +84,9 @@ class Sourcerer(CallbacksExt):
 
         # Dependable properties for UI binding
         TDF.createProperty(self, 'PendingQueue', value=[], dependable=True, readOnly=False)
-        
+
         source_names = [str(s['Settings']['Name']) for s in self.stored['Sources']]
         TDF.createProperty(self, 'SourceNames', value=source_names, dependable=True, readOnly=False)
-        
-        TDF.createProperty(self, 'SelectedName', value=self.stored['SelectedSource']['name'], dependable=True, readOnly=False)
-        TDF.createProperty(self, 'SelectedIndex', value=self.stored['SelectedSource']['index'], dependable=True, readOnly=False)
-        
-        TDF.createProperty(self, 'ActiveName', value=self.stored['ActiveSource']['name'], dependable=True, readOnly=False)
-        TDF.createProperty(self, 'ActiveIndex', value=self.stored['ActiveSource']['index'], dependable=True, readOnly=False)
 
     # -------------------------------------------------------------------------
     # Properties
@@ -150,7 +144,7 @@ class Sourcerer(CallbacksExt):
     # Log colors (RGB 0-255) based on list color palette
     LOG_COLORS = {
         'time': (178, 178, 178),        # label_font gray
-        'SwitchToSource': (51, 127, 204),       # blue
+        'Take': (51, 127, 204),                 # blue
         'TransitionComplete': (140, 220, 180),  # green
         'SourceDone': (255, 200, 50),           # yellow
         'StoreDefault': (200, 150, 255),        # purple
@@ -167,7 +161,7 @@ class Sourcerer(CallbacksExt):
         """Add an entry to the log with timestamp. Newest first, max 10 entries.
 
         Args:
-            event: Event name (e.g., 'SwitchToSource', 'AddSource')
+            event: Event name (e.g., 'Take', 'AddSource')
             data: Dict of event data
             level: Log level for external logger ('INFO', 'WARNING', 'ERROR')
         """
@@ -240,8 +234,14 @@ class Sourcerer(CallbacksExt):
     # Source Management
     # -------------------------------------------------------------------------
 
-    def InitData(self):
+    def InitData(self, force_confirm=False):
         """Reset to clean state - delete all sources and create one new default source."""
+        if not self._confirmSafetyAction(
+            'Initialize (this will clear all sources and log)',
+            force=force_confirm
+        ):
+            return
+
         # Clear all sources
         self.stored['Sources'] = []
 
@@ -257,16 +257,17 @@ class Sourcerer(CallbacksExt):
         # Reset selection and active source
         self.stored['SelectedSource']['index'] = 0
         self.stored['SelectedSource']['name'] = 'Source 0'
-        self.stored['ActiveSource']['index'] = 0
-        self.stored['ActiveSource']['name'] = 'Source 0'
+        self.stored['ActiveSource']['index'] = -1
+        self.stored['ActiveSource']['name'] = ''
         self.stored['State'] = 0
-
 
         # Update the source list and UI
         self._updateSourceList()
         self.UpdateSelectedSourceComp()
 
-        self._log('Init', {'method': 'InitData'})
+        # Clear and log
+        self.ClearLog()
+        self._log('Sourcerer v' + self.ownerComp.par.Version.eval(), {})
 
     def _updateSourceList(self):
         """Update the SourceNames dependable property from stored Sources."""
@@ -274,24 +275,31 @@ class Sourcerer(CallbacksExt):
 
     def _getSource(self, source):
         """
-        Look up a source by index or name.
+        Look up a source by index, name, or return dict directly.
 
         Args:
-            source: Source index (int) or name (str).
+            source: Source index (int), name (str), or source_data dict.
 
         Returns:
             Tuple of (source_data, index, name) or (None, None, None) if not found.
+            For dict inputs: index is -1 (temp source).
         """
-        source_json = None
+        source_data = None
         name = None
         index = None
 
-        if isinstance(source, str):
+        if isinstance(source, dict):
+            # Direct source data (temp source)
+            source_data = source
+            name = source.get('Settings', {}).get('Name', 'Temp')
+            index = -1
+
+        elif isinstance(source, str):
             sources = self.stored['Sources']
             source_names = [s['Settings']['Name'] for s in sources]
             if source in source_names:
                 s = source_names.index(source)
-                source_json = self.stored['Sources'][s]
+                source_data = self.stored['Sources'][s]
                 name = source
                 index = s
             else:
@@ -301,25 +309,24 @@ class Sourcerer(CallbacksExt):
             s = source
             index = source
             if source <= len(self.stored['Sources']) - 1:
-                source_json = self.stored['Sources'][s]
-                name = source_json['Settings']['Name']
+                source_data = self.stored['Sources'][s]
+                name = source_data['Settings']['Name']
             else:
                 debug('source index', s, 'is out of range')
 
         else:
             debug('wrong source type', source)
 
-        return source_json, index, name
+        return source_data, index, name
 
-    def SwitchToSource(self, source, force=False):
-        """Switch to a source.
+    def Take(self, source, force=False):
+        """Take (switch to) a source.
 
         Args:
-            source: Source index or name to switch to
-            force: If True, clears pending queue and switches immediately,
-                   ignoring Enablependingqueue setting
+            source: Source index (int), name (str), or source_data dict.
+                    Dict sources are temp sources (not in source list, ActiveIndex = -1).
+            force: If True, clears pending queue and switches immediately.
         """
-        # Force mode: clear queue and switch right away
         if force:
             self.PendingQueue.clear()
             self._beginTransition(source)
@@ -341,55 +348,27 @@ class Sourcerer(CallbacksExt):
 
         self._beginTransition(source)
 
-    def SwitchToSourceData(self, source_data):
-        """Switch to a temporary source from a source data dictionary.
-
-        The source is not added to the source list. ActiveIndex will be -1.
-        Temp sources always switch immediately (not queued) and do not support
-        follow actions since they have no index in the source list.
-
-        Use GetDefaultSource() or CopySourceData() to get a template, modify it,
-        then pass it here.
-
-        Args:
-            source_data: Complete source dict (from GetDefaultSource() or CopySourceData())
-
-        Example:
-            source = op('Sourcerer').GetDefaultSource()
-            source['Settings']['Name'] = 'Emergency Override'
-            source['Settings']['Transitiontype'] = 'dissolve'
-            source['Settings']['Transitiontime'] = 0.5
-            source['File']['File'] = '/path/to/emergency.mp4'
-            op('Sourcerer').SwitchToSourceData(source)
-        """
-        # Temp sources always switch immediately - clear any pending queue
-        self.PendingQueue.clear()
-        self._beginTransition(None, source_data=source_data)
-
-    def _beginTransition(self, source, source_data=None):
+    def _beginTransition(self, source):
         """Start the actual transition to a source.
 
         Args:
-            source: Source index or name (ignored if source_data provided)
-            source_data: Optional complete source dict for temp sources
+            source: Source index (int), name (str), or source_data dict.
         """
         self.transitionState = TransitionState.TRANSITIONING
+
+        source_data, index, name = self._getSource(source)
+        if source_data is None:
+            self.transitionState = TransitionState.IDLE
+            return
 
         state = self.stored['State']
         next_state = 1 - state
         source_comp = self.ownerComp.op('source' + str(next_state))
 
-        # Temp source: use provided data directly
-        if source_data is not None:
-            name = source_data.get('Settings', {}).get('Name', 'Temp')
-            index = -1
+        # Temp source (dict passed directly, index == -1)
+        if index == -1:
             source_comp.UpdateFromData(source_data, active=True, store_changes=False, index=-1)
-        # Normal source: look up from storage
         else:
-            source_data, index, name = self._getSource(source)
-            if source_data is None:
-                self.transitionState = TransitionState.IDLE
-                return
             self.UpdateSourceCompQuick(source_comp, index)
 
         source_comp.Start()
@@ -427,12 +406,12 @@ class Sourcerer(CallbacksExt):
         self.stored['ActiveSource']['index'] = index
         self.stored['ActiveSource']['name'] = name
 
-        self.DoCallback('onSwitchToSource', {
+        self.DoCallback('onTake', {
             'index': index,
             'name': name,
             'source_data': source_data
         })
-        self._log('SwitchToSource', {'index': index, 'name': name})
+        self._log('Take', {'index': index, 'name': name})
 
     def OnTransitionComplete(self):
         """Called when the transition animation finishes.
@@ -440,26 +419,26 @@ class Sourcerer(CallbacksExt):
         self.transitionState = TransitionState.IDLE
 
         self.DoCallback('onTransitionComplete', {
-            'index': self.ActiveIndex,
-            'name': self.ActiveName
+            'index': self.stored['ActiveSource']['index'],
+            'name': self.stored['ActiveSource']['name']
         })
 
-        self._log('TransitionComplete', {'index': self.ActiveIndex, 'name': self.ActiveName})
+        self._log('TransitionComplete', {'index': self.stored['ActiveSource']['index'], 'name': self.stored['ActiveSource']['name']})
 
         # Process next item in queue if any
         if self.PendingQueue:
             next_source = self.PendingQueue.pop(0)
-            self.SwitchToSource(next_source)
+            self.Take(next_source)
 
     def OnSourceDone(self):
         """Called when the current source finishes (timer ends, video ends, etc.).
         Hook this up to source timer/video completion events."""
         self.DoCallback('onSourceDone', {
-            'index': self.ActiveIndex,
-            'name': self.ActiveName
+            'index': self.stored['ActiveSource']['index'],
+            'name': self.stored['ActiveSource']['name']
         })
 
-        self._log('SourceDone', {'index': self.ActiveIndex, 'name': self.ActiveName})
+        self._log('SourceDone', {'index': self.stored['ActiveSource']['index'], 'name': self.stored['ActiveSource']['name']})
 
     def ClearPendingQueue(self):
         """Clear all pending source switches."""
@@ -472,13 +451,13 @@ class Sourcerer(CallbacksExt):
             self.PendingQueue.clear()
             self.PendingQueue.append(last)
 
-    def SwitchToSelectedSource(self):
-        """Switch to the currently selected source."""
-        self.SwitchToSource(self.stored['SelectedSource']['index'])
+    def TakeSelected(self):
+        """Take the currently selected source."""
+        self.Take(self.stored['SelectedSource']['index'])
 
-    def DelaySwitchToSource(self, source, delay=0):
-        """Switch to a source after a delay in frames."""
-        run(self.SwitchToSource, source, delayFrames=delay)
+    def DelayTake(self, source, delay=0):
+        """Take a source after a delay in frames."""
+        run(self.Take, source, delayFrames=delay)
 
     def RunCommand(self, command):
         """Execute a Python command string."""
@@ -562,22 +541,6 @@ class Sourcerer(CallbacksExt):
         sources = self.stored['Sources'].getRaw()[range_start:range_end + 1]
         with open(f, 'w') as json_file:
             json.dump(sources, json_file)
-
-    def InitSources(self, force_confirm=False):
-        """Reset all sources to initial state with one default source."""
-        if not self._confirmSafetyAction(
-            'Initialize Sources (this will clear all sources)',
-            force=force_confirm
-        ):
-            return
-
-        self.stored['Sources'] = []
-        self.stored['SelectedSource']['index'] = 0
-        self.stored['SelectedSource']['name'] = ''
-
-        self._addSource()
-        self._updateSourceList()
-        self._log('Init', {'method': 'InitSources'})
 
     def _getSourceTemplate(self, template):
         """Get a source template as a simple value dictionary from a template component."""
@@ -669,7 +632,7 @@ class Sourcerer(CallbacksExt):
             self.UpdateSelectedSourceComp()
 
         # Update active source in real-time if editing it
-        if source == self.ActiveIndex:
+        if source == self.stored['ActiveSource']['index']:
             active_comp = self.ownerComp.op('source' + str(self.stored['State']))
             self.UpdateSourceCompQuick(active_comp, source, active=True, store_changes=False)
 
@@ -724,7 +687,7 @@ class Sourcerer(CallbacksExt):
         return self._getSourceTemplate('defaultSource')
 
     def _addSource(self, source_data=None, source_type=None, source_path=None, source_name=None):
-        """Internal add source without safety check. Used by InitSources."""
+        """Internal add source without safety check."""
         # get the selected source index
         s = self.stored['SelectedSource']['index']
 
@@ -997,9 +960,9 @@ class Sourcerer(CallbacksExt):
         """Handle Export Range pulse parameter."""
         self.ExportRange()
 
-    def pulse_Initsources(self):
+    def pulse_Initdata(self):
         """Handle Init Sources pulse parameter."""
-        self.InitSources(force_confirm=True)
+        self.InitData(force_confirm=True)
 
     def pulse_Clearpendingqueue(self):
         """Handle Clear Pending Queue pulse parameter."""

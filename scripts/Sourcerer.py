@@ -22,12 +22,42 @@ class TransitionState:
     TRANSITIONING = 'transitioning'
 
 
+class SourceType:
+    FILE = 'file'
+    TOP = 'top'
+
+
+class DoneOn:
+    NONE = 'none'
+    PLAY_N_TIMES = 'play_n_times'
+    TIMER = 'timer'
+    CHOP = 'chop'
+
+
+class FollowAction:
+    NONE = 'none'
+    PLAY_NEXT = 'play_next'
+    GOTO_INDEX = 'goto_index'
+    GOTO_NAME = 'goto_name'
+
+
 class Sourcerer(CallbacksExt):
     """
     Main Sourcerer extension for managing media sources and transitions.
 
     Provides centralized source management with a list-based interface,
     built-in transitions, follow actions, and real-time display properties.
+
+    Architecture:
+        Source Components:
+        - defaultSource: Clone master, stores default parameter template
+        - selectedSource: User-facing editor, Storechanges=True
+        - source0, source1: Playback pair for A/B transitions, Active=True when live
+
+        State Machine:
+        - State (0 or 1): Which source comp is currently live
+        - Transitions ping-pong between source0 and source1
+        - During transition, outgoing source continues while incoming starts
     """
 
     def __init__(self, ownerComp):
@@ -265,6 +295,11 @@ class Sourcerer(CallbacksExt):
         self._updateSourceList()
         self.UpdateSelectedSourceComp()
 
+        # Reset playback comps to default (stops any playing media)
+        default_data = self._getSourceTemplate('defaultSource')
+        self.ownerComp.op('source0').UpdateFromData(default_data, active=False, store_changes=False, index=-1)
+        self.ownerComp.op('source1').UpdateFromData(default_data, active=False, store_changes=False, index=-1)
+
         # Clear and log
         self.ClearLog()
         self._log('Sourcerer v' + self.ownerComp.par.Version.eval(), {})
@@ -361,19 +396,31 @@ class Sourcerer(CallbacksExt):
             self.transitionState = TransitionState.IDLE
             return
 
+        next_state = self._prepareNextSourceComp(source_data, index)
+        self._configureTransition(source_data)
+        self._updateActiveState(next_state, index, name)
+        self._fireTransitionCallbacks(index, name, source_data)
+
+    def _prepareNextSourceComp(self, source_data, index):
+        """Prepare the next source component for playback.
+
+        Returns:
+            next_state: The state index (0 or 1) of the prepared source comp.
+        """
         state = self.stored['State']
         next_state = 1 - state
         source_comp = self.ownerComp.op('source' + str(next_state))
 
-        # Temp source (dict passed directly, index == -1)
         if index == -1:
             source_comp.UpdateFromData(source_data, active=True, store_changes=False, index=-1)
         else:
-            self.UpdateSourceCompQuick(source_comp, index)
+            self.UpdateSourceComp(source_comp, index)
 
         source_comp.Start()
+        return next_state
 
-        # Configure transition parameters
+    def _configureTransition(self, source_data):
+        """Configure transition parameters from source settings."""
         settings = source_data['Settings']
         tcomp_par = self.transitionComp.par
         trans_type = settings['Transitiontype']
@@ -401,11 +448,14 @@ class Sourcerer(CallbacksExt):
         if trans_shape == 'custom':
             tcomp_par.Customtransitionshape = settings['Customtransitionshape']
 
-        # Update state
+    def _updateActiveState(self, next_state, index, name):
+        """Update state machine and active source tracking."""
         self.stored['State'] = next_state
         self.stored['ActiveSource']['index'] = index
         self.stored['ActiveSource']['name'] = name
 
+    def _fireTransitionCallbacks(self, index, name, source_data):
+        """Fire callbacks and log the transition."""
         self.DoCallback('onTake', {
             'index': index,
             'name': name,
@@ -612,19 +662,15 @@ class Sourcerer(CallbacksExt):
     def UpdateSelectedSourceComp(self):
         """Update the selected source component from storage."""
         s = self.stored['SelectedSource']['index']
-        self.UpdateSourceCompQuick(self.selectedSourceComp, s, active=False, store_changes=True)
+        self.UpdateSourceComp(self.selectedSourceComp, s, active=False, store_changes=True)
 
-    def UpdateSourceCompQuick(self, source_comp, source_index, active=True, store_changes=False):
+    def UpdateSourceComp(self, source_comp, source_index, active=True, store_changes=False):
         """Update a source component with data from storage."""
         source_data = self.stored['Sources'][source_index]
         source_comp.UpdateFromData(source_data, active=active, store_changes=store_changes, index=source_index)
 
-    def UpdateSourceComp(self, source_comp, source_index, active=True, store_changes=False):
-        """Full source update - same as quick in lite version."""
-        self.UpdateSourceCompQuick(source_comp, source_index, active, store_changes)
-
     def StoreSourceToSelected(self, source_comp, update_selected_comp=False):
-        """Store source component parameters to the selected source in storage."""
+        """Store all source component parameters to the selected source in storage."""
         source = self.stored['SelectedSource']['index']
         self.StoreSource(source_comp, source)
 
@@ -634,9 +680,29 @@ class Sourcerer(CallbacksExt):
         # Update active source in real-time if editing it
         if source == self.stored['ActiveSource']['index']:
             active_comp = self.ownerComp.op('source' + str(self.stored['State']))
-            self.UpdateSourceCompQuick(active_comp, source, active=True, store_changes=False)
+            self.UpdateSourceComp(active_comp, source, active=True, store_changes=False)
 
         self._updateSourceList()
+
+    def StoreParToSelected(self, par):
+        """Store a single parameter value to the selected source in storage."""
+        index = self.stored['SelectedSource']['index']
+        page_name = par.page.name
+
+        # Handle tuplet parameters (colors, transforms, etc.)
+        if len(par.tuplet) > 1 and par == par.tuplet[0]:
+            self.stored['Sources'][index][page_name][par.tupletName] = [p.eval() for p in par.tuplet]
+        elif len(par.tuplet) == 1:
+            self.stored['Sources'][index][page_name][par.name] = par.eval()
+
+        # Only update source list if name changed
+        if par.name == 'Name':
+            self._updateSourceList()
+
+        # Update active source in real-time if editing it
+        if index == self.stored['ActiveSource']['index']:
+            active_comp = self.ownerComp.op('source' + str(self.stored['State']))
+            self.UpdateSourceComp(active_comp, index, active=True, store_changes=False)
 
     def StoreSource(self, source_comp, source):
         """Store source component parameters to storage at given index."""
@@ -696,13 +762,13 @@ class Sourcerer(CallbacksExt):
             source_data = self._getSourceTemplate('defaultSource')
 
             # set the source type and path if provided
-            if source_type == 'file':
-                source_data['Settings']['Sourcetype'] = 'file'
+            if source_type == SourceType.FILE:
+                source_data['Settings']['Sourcetype'] = SourceType.FILE
                 if source_path is not None:
                     source_data['File']['File'] = source_path
 
-            elif source_type == 'top':
-                source_data['Settings']['Sourcetype'] = 'top'
+            elif source_type == SourceType.TOP:
+                source_data['Settings']['Sourcetype'] = SourceType.TOP
                 if source_path is not None:
                     source_data['TOP']['Top'] = source_path
 
@@ -721,7 +787,7 @@ class Sourcerer(CallbacksExt):
         self.SelectSource(insert_index)
 
         # update the source comp parameters
-        self.UpdateSourceCompQuick(self.selectedSourceComp, insert_index, store_changes=True)
+        self.UpdateSourceComp(self.selectedSourceComp, insert_index, store_changes=True)
         self._updateSourceList()
 
         self._log('AddSource', {'index': insert_index, 'name': source_data['Settings']['Name']})

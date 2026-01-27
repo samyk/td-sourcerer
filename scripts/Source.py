@@ -15,6 +15,25 @@ from TDStoreTools import StorageManager
 import TDFunctions as TDF
 
 
+class SourceType:
+    FILE = 'file'
+    TOP = 'top'
+
+
+class DoneOn:
+    NONE = 'none'
+    PLAY_N_TIMES = 'play_n_times'
+    TIMER = 'timer'
+    CHOP = 'chop'
+
+
+class FollowAction:
+    NONE = 'none'
+    PLAY_NEXT = 'play_next'
+    GOTO_INDEX = 'goto_index'
+    GOTO_NAME = 'goto_name'
+
+
 class Source(CallbacksExt):
     """
     Source playback component extension.
@@ -83,30 +102,6 @@ class Source(CallbacksExt):
         TDF.createProperty(self, 'Progress', value='N/A', dependable=True, readOnly=False)
         TDF.createProperty(self, 'Next', value='N/A', dependable=True, readOnly=False)
 
-    # Suffix patterns for multi-value parameters (color, xy, etc.)
-    PAR_SUFFIXES = {
-        'r': ['r', 'g', 'b'],
-        'x': ['x', 'y'],
-    }
-
-    def _setParVal(self, par_name, value):
-        """Set a parameter value, handling multi-value parameters."""
-        if hasattr(self.ownerComp.par, par_name):
-            par = getattr(self.ownerComp.par, par_name)
-            if isinstance(value, (list, tuple)):
-                for i, p in enumerate(par.tuplet):
-                    if i < len(value):
-                        p.val = value[i]
-            else:
-                par.val = value
-        else:
-            for first_suffix, suffixes in self.PAR_SUFFIXES.items():
-                if hasattr(self.ownerComp.par, par_name + first_suffix):
-                    for i, suffix in enumerate(suffixes):
-                        if i < len(value):
-                            getattr(self.ownerComp.par, par_name + suffix).val = value[i]
-                    break
-
     def _formatTimecode(self, frames, fps):
         """Format frame count as timecode string HH:MM:SS:FF"""
         if fps <= 0:
@@ -121,21 +116,21 @@ class Source(CallbacksExt):
     def _getTransitionTimeForFollowAction(self):
         """Get the transition time (in seconds) for the follow action target."""
         follow_action = str(self.ownerComp.par.Followactionfile)
-        if follow_action == 'none':
+        if follow_action == FollowAction.NONE:
             return 0.0
 
         target_source = None
         current_index = int(self.ownerComp.par.Index)
 
-        if follow_action == 'play_next':
+        if follow_action == FollowAction.PLAY_NEXT:
             next_index = current_index + 1
             if next_index < len(ext.SOURCERER.Sources):
                 target_source = ext.SOURCERER.Sources[next_index]
-        elif follow_action == 'goto_index':
+        elif follow_action == FollowAction.GOTO_INDEX:
             goto_index = int(self.ownerComp.par.Gotoindexfile)
             if 0 <= goto_index < len(ext.SOURCERER.Sources):
                 target_source = ext.SOURCERER.Sources[goto_index]
-        elif follow_action == 'goto_name':
+        elif follow_action == FollowAction.GOTO_NAME:
             goto_name = str(self.ownerComp.par.Gotonamefile)
             source_data, idx, name = ext.SOURCERER._getSource(goto_name)
             target_source = source_data
@@ -152,28 +147,28 @@ class Source(CallbacksExt):
         """Get display name for the next source based on follow action."""
         source_type = str(self.ownerComp.par.Sourcetype)
 
-        if source_type == 'file':
+        if source_type == SourceType.FILE:
             follow_action = str(self.ownerComp.par.Followactionfile)
-        elif source_type == 'top':
+        elif source_type == SourceType.TOP:
             follow_action = str(self.ownerComp.par.Followactiontop)
         else:
             return 'N/A'
 
-        if follow_action == 'none':
+        if follow_action == FollowAction.NONE:
             return 'N/A'
 
         current_index = int(self.ownerComp.par.Index)
         target_index = None
         target_name = None
 
-        if follow_action == 'play_next':
+        if follow_action == FollowAction.PLAY_NEXT:
             next_index = current_index + 1
             if next_index < len(ext.SOURCERER.Sources):
                 target_index = next_index
                 target_source = ext.SOURCERER.Sources[next_index]
                 target_name = target_source.get('Settings', {}).get('Name', '')
-        elif follow_action == 'goto_index':
-            if source_type == 'file':
+        elif follow_action == FollowAction.GOTO_INDEX:
+            if source_type == SourceType.FILE:
                 goto_index = int(self.ownerComp.par.Gotoindexfile)
             else:
                 goto_index = int(self.ownerComp.par.Gotoindextop)
@@ -181,8 +176,8 @@ class Source(CallbacksExt):
                 target_index = goto_index
                 target_source = ext.SOURCERER.Sources[goto_index]
                 target_name = target_source.get('Settings', {}).get('Name', '')
-        elif follow_action == 'goto_name':
-            if source_type == 'file':
+        elif follow_action == FollowAction.GOTO_NAME:
+            if source_type == SourceType.FILE:
                 goto_name = str(self.ownerComp.par.Gotonamefile)
             else:
                 goto_name = str(self.ownerComp.par.Gotonametop)
@@ -212,9 +207,9 @@ class Source(CallbacksExt):
             return
 
         source_type = str(self.ownerComp.par.Sourcetype)
-        if source_type == 'file':
+        if source_type == SourceType.FILE:
             self._updateFileDisplay(str(self.ownerComp.par.Doneonfile))
-        elif source_type == 'top':
+        elif source_type == SourceType.TOP:
             self._updateTopDisplay(str(self.ownerComp.par.Doneontop))
         else:
             self._setAllDisplayNA()
@@ -225,7 +220,7 @@ class Source(CallbacksExt):
         self.LoopCount = self._loopCount
         self.Next = self._getNextSourceDisplay()
 
-        if done_on == 'play_n_times':
+        if done_on == DoneOn.PLAY_N_TIMES:
             play_n_times = int(self.ownerComp.par.Playntimes)
             total_frames_all_loops = self._totalFrames * play_n_times
             frames_completed = (self._loopCount * self._totalFrames) + self._currentFrame
@@ -242,7 +237,7 @@ class Source(CallbacksExt):
             self.TimeRemaining = self._formatTimecode(total_frames_remaining, self._sampleRate)
             self.LoopsRemaining = self._loopsRemaining
 
-        elif done_on == 'timer':
+        elif done_on == DoneOn.TIMER:
             self.Progress = round(self._timerProgress * 100, 2)
             self.TimeRemaining = self._formatSeconds(self._timerTimeRemaining)
             self.LoopsRemaining = 'N/A'
@@ -264,7 +259,7 @@ class Source(CallbacksExt):
         self.LoopsRemaining = 'N/A'
         self.Next = self._getNextSourceDisplay()
 
-        if done_on == 'timer':
+        if done_on == DoneOn.TIMER:
             self.Progress = round(self._timerProgress * 100, 2)
             self.TimeRemaining = self._formatSeconds(self._timerTimeRemaining)
             self.Timecode = self._formatSeconds(self._timerLengthSeconds * self._timerProgress)
@@ -301,7 +296,7 @@ class Source(CallbacksExt):
 
         for page_name, page_data in source_data.items():
             for par_name, value in page_data.items():
-                self._setParVal(par_name, value)
+                ext.SOURCERER._setParVal(par_name, value, self.ownerComp)
 
         self.ownerComp.par.Storechanges = store_changes
         self.ownerComp.par.Active = active
@@ -310,19 +305,19 @@ class Source(CallbacksExt):
 
         self._isUpdating = False
 
-        run('args[0].UpdateFileInfo()', self, delayFrames=1)
+        run(self.UpdateFileInfo, delayFrames=1)
 
         if active:
             if self.ownerComp.par.Enablecommand:
                 try:
                     run(str(self.ownerComp.par.Command))
-                except:
-                    pass
+                except Exception as e:
+                    ext.SOURCERER._log('CommandError', {'error': str(e), 'command': str(self.ownerComp.par.Command)}, level='ERROR')
             if self.ownerComp.par.Enablecuetop:
                 try:
                     op(self.ownerComp.par.Cuetop).par.cue.pulse()
-                except:
-                    pass
+                except Exception as e:
+                    ext.SOURCERER._log('CueTOPError', {'error': str(e), 'top': str(self.ownerComp.par.Cuetop)}, level='ERROR')
 
     def UpdateFileInfo(self):
         """Update file length and rate from the movieFileIn operator."""
@@ -351,17 +346,17 @@ class Source(CallbacksExt):
         self._updateDisplayState()
 
         source_type = str(self.ownerComp.par.Sourcetype)
-        if source_type == 'file':
+        if source_type == SourceType.FILE:
             self.movieFileIn.par.reload.pulse()
             done_on = self.ownerComp.par.Doneonfile.eval()
-            if done_on == 'timer' and self.doneTimer is not None:
+            if done_on == DoneOn.TIMER and self.doneTimer is not None:
                 self._timerLengthSeconds = float(self.ownerComp.par.Timertimefile)
                 self._timerTimeRemaining = self._timerLengthSeconds
                 self.doneTimer.par.initialize.pulse()
                 run(self.doneTimer.par.start.pulse, delayFrames=1)
-        elif source_type == 'top':
+        elif source_type == SourceType.TOP:
             done_on = self.ownerComp.par.Doneontop.eval()
-            if done_on == 'timer' and self.doneTimer is not None:
+            if done_on == DoneOn.TIMER and self.doneTimer is not None:
                 self._timerLengthSeconds = float(self.ownerComp.par.Timertimetop)
                 self._timerTimeRemaining = self._timerLengthSeconds
                 self.doneTimer.par.initialize.pulse()
@@ -374,9 +369,9 @@ class Source(CallbacksExt):
     def _handleFollowAction(self):
         """Handle follow action when source is done playing."""
         source_type = str(self.ownerComp.par.Sourcetype)
-        if source_type == 'file':
+        if source_type == SourceType.FILE:
             follow_action = self.ownerComp.par.Followactionfile
-        elif source_type == 'top':
+        elif source_type == SourceType.TOP:
             follow_action = self.ownerComp.par.Followactiontop
         else:
             return
@@ -390,16 +385,16 @@ class Source(CallbacksExt):
 
         ext.SOURCERER.OnSourceDone()
 
-        if follow_action == 'play_next':
-            ext.SOURCERER.Take(ext.SOURCERER.ActiveIndex + 1)
-        elif follow_action == 'goto_index':
-            if source_type == 'file':
+        if follow_action == FollowAction.PLAY_NEXT:
+            ext.SOURCERER.Take(ext.SOURCERER.ActiveSource['index'] + 1)
+        elif follow_action == FollowAction.GOTO_INDEX:
+            if source_type == SourceType.FILE:
                 goto_index = self.ownerComp.par.Gotoindexfile
             else:
                 goto_index = self.ownerComp.par.Gotoindextop
             ext.SOURCERER.Take(int(goto_index))
-        elif follow_action == 'goto_name':
-            if source_type == 'file':
+        elif follow_action == FollowAction.GOTO_NAME:
+            if source_type == SourceType.FILE:
                 goto_name = self.ownerComp.par.Gotonamefile
             else:
                 goto_name = self.ownerComp.par.Gotonametop
@@ -411,11 +406,11 @@ class Source(CallbacksExt):
             return
 
         if par.name == 'File' and par.val != prev:
-            run('args[0].UpdateFileInfo()', self, delayFrames=1)
+            run(self.UpdateFileInfo, delayFrames=1)
 
         if not self.ownerComp.par.Storechanges:
             return
-        ext.SOURCERER.StoreSourceToSelected(self.ownerComp)
+        ext.SOURCERER.StoreParToSelected(par)
 
     def onFileValueChange(self, channel, val):
         """Callback for file info CHOP channel changes."""
@@ -470,7 +465,7 @@ class Source(CallbacksExt):
                 self._loopCount += 1
                 self._loopsRemaining = max(0, play_n_times - self._loopCount)
 
-                if done_on == 'play_n_times' and not self._doneTriggered:
+                if done_on == DoneOn.PLAY_N_TIMES and not self._doneTriggered:
                     if self._loopCount >= play_n_times:
                         self._doneTriggered = True
                         self._handleFollowAction()
@@ -506,12 +501,12 @@ class Source(CallbacksExt):
 
     def onDoneCHOPFile(self):
         """Callback for done CHOP completion for file source."""
-        if str(self.ownerComp.par.Doneonfile) == 'chop':
+        if str(self.ownerComp.par.Doneonfile) == DoneOn.CHOP:
             self._handleFollowAction()
 
     def onDoneCHOPTop(self):
         """Callback for done CHOP completion for TOP source."""
-        if str(self.ownerComp.par.Doneontop) == 'chop':
+        if str(self.ownerComp.par.Doneontop) == DoneOn.CHOP:
             self._handleFollowAction()
 
     # -------------------------------------------------------------------------

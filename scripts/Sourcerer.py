@@ -84,24 +84,19 @@ class Sourcerer(CallbacksExt):
 
         # Dependable properties for UI binding
         TDF.createProperty(self, 'PendingQueue', value=[], dependable=True, readOnly=False)
+        
         source_names = [str(s['Settings']['Name']) for s in self.stored['Sources']]
         TDF.createProperty(self, 'SourceNames', value=source_names, dependable=True, readOnly=False)
+        
+        TDF.createProperty(self, 'SelectedName', value=self.stored['SelectedSource']['name'], dependable=True, readOnly=False)
         TDF.createProperty(self, 'SelectedIndex', value=self.stored['SelectedSource']['index'], dependable=True, readOnly=False)
+        
         TDF.createProperty(self, 'ActiveName', value=self.stored['ActiveSource']['name'], dependable=True, readOnly=False)
+        TDF.createProperty(self, 'ActiveIndex', value=self.stored['ActiveSource']['index'], dependable=True, readOnly=False)
 
     # -------------------------------------------------------------------------
     # Properties
     # -------------------------------------------------------------------------
-
-    @property
-    def SelectedName(self):
-        """Currently selected source name."""
-        return self.stored['SelectedSource']['name']
-
-    @property
-    def ActiveIndex(self):
-        """Index of the currently active source."""
-        return self.stored['ActiveSource']['index']
 
     @property
     def ActiveSourceComp(self):
@@ -123,10 +118,9 @@ class Sourcerer(CallbacksExt):
         """Whether the selected source is the active source (for UI warnings)."""
         return self.stored['SelectedSource']['index'] == self.stored['ActiveSource']['index']
 
-    @property
-    def Safety(self):
-        """Get safety state."""
-        return self.stored['Safety']
+    # -------------------------------------------------------------------------
+    # Safety Mode
+    # -------------------------------------------------------------------------
 
     def ToggleSafety(self):
         """Toggle safety mode on or off."""
@@ -242,6 +236,10 @@ class Sourcerer(CallbacksExt):
         self.stored['Log'].clear()
         self.stored['LogFormatted'].clear()
 
+    # -------------------------------------------------------------------------
+    # Source Management
+    # -------------------------------------------------------------------------
+
     def InitData(self):
         """Reset to clean state - delete all sources and create one new default source."""
         # Clear all sources
@@ -263,9 +261,6 @@ class Sourcerer(CallbacksExt):
         self.stored['ActiveSource']['name'] = 'Source 0'
         self.stored['State'] = 0
 
-        # Update dependable properties
-        self.SelectedIndex = 0
-        self.ActiveName = 'Source 0'
 
         # Update the source list and UI
         self._updateSourceList()
@@ -431,7 +426,6 @@ class Sourcerer(CallbacksExt):
         self.stored['State'] = next_state
         self.stored['ActiveSource']['index'] = index
         self.stored['ActiveSource']['name'] = name
-        self.ActiveName = name
 
         self.DoCallback('onSwitchToSource', {
             'index': index,
@@ -580,7 +574,6 @@ class Sourcerer(CallbacksExt):
         self.stored['Sources'] = []
         self.stored['SelectedSource']['index'] = 0
         self.stored['SelectedSource']['name'] = ''
-        self.SelectedIndex = 0
 
         self._addSource()
         self._updateSourceList()
@@ -830,7 +823,6 @@ class Sourcerer(CallbacksExt):
         if is_active:
             self.stored['ActiveSource']['index'] = -1
             self.stored['ActiveSource']['name'] = ''
-            self.ActiveName = ''
         elif self.stored['ActiveSource']['index'] > s:
             self.stored['ActiveSource']['index'] -= 1
 
@@ -859,7 +851,6 @@ class Sourcerer(CallbacksExt):
 
         if self.stored['ActiveSource']['index'] == index:
             self.stored['ActiveSource']['name'] = name
-            self.ActiveName = name
 
         self._updateSourceList()
         self.UpdateSelectedSourceComp()
@@ -898,7 +889,7 @@ class Sourcerer(CallbacksExt):
 
         self.stored['SelectedSource']['index'] = to_index
         self.stored['SelectedSource']['name'] = moved_name
-        self.SelectedIndex = to_index
+
         self._updateSourceList()
         self.UpdateSelectedSourceComp()
         self._log('MoveSource', {'name': moved_name, 'from': from_index, 'to': to_index})
@@ -937,7 +928,7 @@ class Sourcerer(CallbacksExt):
             index = index - 1
 
         self.stored['SelectedSource']['index'] = index
-        self.SelectedIndex = index
+
         if 0 <= index < len(self.stored['Sources']):
             self.stored['SelectedSource']['name'] = self.stored['Sources'][index]['Settings']['Name']
         else:

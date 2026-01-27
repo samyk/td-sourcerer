@@ -58,6 +58,10 @@ class SourcererList:
     # Data Accessors
     # -------------------------------------------------------------------------
 
+    def sourcerer(self):
+        """Get Sourcerer operator."""
+        return op(self.ownerComp.par.Sourcerer)
+    
     def getSourceNames(self):
         """Get list of source names."""
         return op(self.ownerComp.par.Sourcerer).SourceNames
@@ -69,17 +73,17 @@ class SourcererList:
             return names[index]
         return None
 
-    def getSelectedIndex(self):
-        """Get selected source index."""
-        return op(self.ownerComp.par.Sourcerer).SelectedIndex
+    # def getSelectedIndex(self):
+    #     """Get selected source index."""
+    #     return op(self.ownerComp.par.Sourcerer).SelectedIndex
 
-    def getActiveName(self):
-        """Get active source name."""
-        return op(self.ownerComp.par.Sourcerer).ActiveName
+    # def getActiveName(self):
+    #     """Get active source name."""
+    #     return op(self.ownerComp.par.Sourcerer).ActiveName
 
-    def getActiveIndex(self):
-        """Get active source index."""
-        return op(self.ownerComp.par.Sourcerer).ActiveIndex
+    # def getActiveIndex(self):
+    #     """Get active source index."""
+    #     return op(self.ownerComp.par.Sourcerer).ActiveIndex
 
     # -------------------------------------------------------------------------
     # Public Methods
@@ -154,8 +158,8 @@ class SourcererList:
         if not names:
             return
 
-        selected = self.getSelectedIndex()
-        active_index = self.getActiveIndex()
+        selected = self.sourcerer().SelectedSource['index']
+        active_index = self.sourcerer().ActiveSource['index']
 
         # Apply hover to current row
         if row is not None and row > 0 and row != prevRow:
@@ -295,8 +299,8 @@ class SourcererList:
         rowAttribs.bottomBorderOutColor = self.COLORS['border_bottom']
 
         source_index = row - 1
-        selected = self.getSelectedIndex()
-        active_index = self.getActiveIndex()
+        selected = self.sourcerer().SelectedSource['index']
+        active_index = self.sourcerer().ActiveSource['index']
         is_selected = (source_index == selected)
         is_active = (source_index == active_index)
 

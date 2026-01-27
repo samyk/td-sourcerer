@@ -500,24 +500,6 @@ When safety is enabled, protected actions will show a confirmation dialog before
 | `Safety` | bool | Whether safety mode is enabled. |
 | `State` | int | Current switcher state (0 or 1, dependable). |
 
-### Dependable Properties
-
-The following properties support TouchDesigner's dependency system for reactive UI updates:
-
-- `SourceNames` - Updates when sources are added, deleted, renamed, or reordered
-- `SelectedIndex` - Updates when selection changes
-- `ActiveName` - Updates when active source changes
-- `PendingQueue` - Updates when queue changes
-
-Bind to these properties in your UI components for automatic updates:
-```python
-# In a parameter expression
-op('Sourcerer').SourceNames
-
-# In a script
-op('Sourcerer').SourceNames.dependValue
-```
-
 ### Source Component Properties
 
 Active source components expose display properties:

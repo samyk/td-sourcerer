@@ -510,7 +510,7 @@ class Sourcerer(CallbacksExt):
 
     def RunCommand(self, command):
         """Execute a Python command string."""
-        run(command)
+        run(command, fromOP=self.ownerComp)
 
     # -------------------------------------------------------------------------
     # Import/Export
@@ -640,11 +640,19 @@ class Sourcerer(CallbacksExt):
 
     # Parameters that are derived/read-only and should not be stored
     EXCLUDE_FROM_STORAGE = {'Filelengthframes', 'Filesamplerate'}
+    # Parameter pages to exclude entirely from storage
+    EXCLUDE_PAGES_FROM_STORAGE = {'Callbacks', 'Private'}
 
     def _extractValues(self, comp):
-        """Extract parameter values from a component as a nested dictionary."""
+        """Extract parameter values from a component as a nested dictionary.
+
+        Uses par.val instead of par.eval() for OP-type parameters to store
+        string paths rather than operator objects (which can't be pickled).
+        """
         source_dict = {}
         for page in comp.customPages:
+            if page.name in self.EXCLUDE_PAGES_FROM_STORAGE:
+                continue
             page_dict = {}
             for par in page.pars:
                 if par.name in self.EXCLUDE_FROM_STORAGE:
@@ -652,9 +660,11 @@ class Sourcerer(CallbacksExt):
                 if len(par.tuplet) > 1 and par == par.tuplet[0]:
                     if par.tupletName in self.EXCLUDE_FROM_STORAGE:
                         continue
-                    page_dict[par.tupletName] = [p.eval() for p in par.tuplet]
+                    # Use par.val for OP parameters to get string path, not operator object
+                    page_dict[par.tupletName] = [p.val if p.isOP else p.eval() for p in par.tuplet]
                 elif len(par.tuplet) == 1:
-                    page_dict[par.name] = par.eval()
+                    # Use par.val for OP parameters to get string path, not operator object
+                    page_dict[par.name] = par.val if par.isOP else par.eval()
             source_dict[page.name] = page_dict
         return source_dict
 
@@ -687,6 +697,12 @@ class Sourcerer(CallbacksExt):
         """Store a single parameter value to the selected source in storage."""
         index = self.stored['SelectedSource']['index']
         page_name = par.page.name
+
+        # Skip excluded pages and parameters
+        if page_name in self.EXCLUDE_PAGES_FROM_STORAGE:
+            return
+        if par.name in self.EXCLUDE_FROM_STORAGE:
+            return
 
         # Handle tuplet parameters (colors, transforms, etc.)
         if len(par.tuplet) > 1 and par == par.tuplet[0]:

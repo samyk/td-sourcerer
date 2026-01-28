@@ -519,7 +519,7 @@ class Source(CallbacksExt):
 
     def pulse_Commandpulse(self):
         """Execute the command script."""
-        run(str(self.ownerComp.par.Command))
+        run(str(self.ownerComp.par.Command), fromOP=parent.SOURCERER)
 
     def pulse_Donepulsefile(self):
         """Trigger done for file source."""

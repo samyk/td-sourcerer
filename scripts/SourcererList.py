@@ -1,5 +1,5 @@
 """
-SourcererList - List UI component for Sourcerer Lite.
+SourcererList - List UI component for Sourcerer.
 
 Provides the source list interface with drag-drop reordering,
 double-click renaming, and right-click context menu.

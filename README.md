@@ -8,7 +8,7 @@ License: MIT
 
 ## Overview
 
-Sourcerer Lite is a streamlined media management component for TouchDesigner that provides organized playback, processing, and switching of image files and generative sources.
+Sourcerer is a streamlined media management component for TouchDesigner that provides organized playback, processing, and switching of image files and generative sources.
 
 ![sourcerer_screen1](images/sourcerer.jpg)
 

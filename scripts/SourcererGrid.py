@@ -1,5 +1,5 @@
 """
-SourcererGrid - Touch-friendly grid UI for Sourcerer Lite.
+SourcererGrid - Touch-friendly grid UI for Sourcerer.
 
 Displays source thumbnails in a grid layout for quick visual selection,
 ideal for touch screen performances and live show control.

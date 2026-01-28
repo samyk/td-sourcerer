@@ -1,5 +1,5 @@
 """
-Sourcerer Lite - Media source management for TouchDesigner.
+Sourcerer - Media source management for TouchDesigner.
 
 A streamlined component for managing, switching, and transitioning between
 file-based media and TOP-based generative content.
@@ -1006,7 +1006,7 @@ class Sourcerer(CallbacksExt):
 
     def pulse_Editextension(self):
         """Open the extension script for editing."""
-        self.ownerComp.op('SourcererLite').par.edit.pulse()
+        self.ownerComp.op('Sourcerer').par.edit.pulse()
 
     def pulse_Import(self):
         """Handle Import pulse parameter."""

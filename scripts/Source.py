@@ -1,5 +1,5 @@
 """
-Source - Media source playback component for Sourcerer Lite.
+Source - Media source playback component for Sourcerer.
 
 Handles playback of file-based and TOP-based sources with follow actions,
 display properties, and transition timing calculations.

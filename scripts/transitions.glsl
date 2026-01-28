@@ -1,5 +1,5 @@
 // License: MIT
-// Sourcerer Lite - Transitions shader
+// Sourcerer - Transitions shader
 // Transitions: Dissolve, Dip, Slide, Wipe, Blur, File, Top
 
 uniform float progress;  // Always 0 to 1

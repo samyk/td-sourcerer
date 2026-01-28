@@ -104,16 +104,14 @@ class Sourcerer(CallbacksExt):
             {'name': 'State', 'default': 0, 'dependable': True},
             {'name': 'Safety', 'default': False, 'dependable': True},
             {'name': 'Log', 'default': [], 'dependable': True},
-            {'name': 'LogFormatted', 'default': [], 'dependable': True}
+            {'name': 'LogFormatted', 'default': [], 'dependable': True},
+            {'name': 'PendingQueue', 'default': [], 'dependable': True},
         ]
 
         self.stored = StorageManager(self, self.DataComp, storedItems)
 
         # State machine for transitions
         self.transitionState = TransitionState.IDLE
-
-        # Dependable properties for UI binding
-        TDF.createProperty(self, 'PendingQueue', value=[], dependable=True, readOnly=False)
 
         source_names = [str(s['Settings']['Name']) for s in self.stored['Sources']]
         TDF.createProperty(self, 'SourceNames', value=source_names, dependable=True, readOnly=False)
@@ -276,7 +274,7 @@ class Sourcerer(CallbacksExt):
         self.stored['Sources'] = []
 
         # Clear pending queue and reset transition state
-        self.PendingQueue.clear()
+        self.stored['PendingQueue'].clear()
         self.transitionState = TransitionState.IDLE
 
         # Create one default source
@@ -363,7 +361,7 @@ class Sourcerer(CallbacksExt):
             force: If True, clears pending queue and switches immediately.
         """
         if force:
-            self.PendingQueue.clear()
+            self.stored['PendingQueue'].clear()
             self._beginTransition(source)
             return
 
@@ -374,8 +372,8 @@ class Sourcerer(CallbacksExt):
         if self.transitionState == TransitionState.TRANSITIONING:
             if queue_enabled:
                 # Avoid duplicate consecutive entries
-                if not self.PendingQueue or self.PendingQueue[-1] != source:
-                    self.PendingQueue.append(source)
+                if not self.stored['PendingQueue'] or self.stored['PendingQueue'][-1] != source:
+                    self.stored['PendingQueue'].append(source)
             else:
                 # Queue disabled - begin transition immediately (will interrupt current)
                 self._beginTransition(source)
@@ -476,8 +474,8 @@ class Sourcerer(CallbacksExt):
         self._log('TransitionComplete', {'index': self.stored['ActiveSource']['index'], 'name': self.stored['ActiveSource']['name']})
 
         # Process next item in queue if any
-        if self.PendingQueue:
-            next_source = self.PendingQueue.pop(0)
+        if self.stored['PendingQueue']:
+            next_source = self.stored['PendingQueue'].pop(0)
             self.Take(next_source)
 
     def OnSourceDone(self):
@@ -492,14 +490,14 @@ class Sourcerer(CallbacksExt):
 
     def ClearPendingQueue(self):
         """Clear all pending source switches."""
-        self.PendingQueue.clear()
+        self.stored['PendingQueue'].clear()
 
     def SkipToLastPending(self):
         """Clear queue but keep last item - jump to final destination."""
-        if len(self.PendingQueue) > 1:
-            last = self.PendingQueue[-1]
-            self.PendingQueue.clear()
-            self.PendingQueue.append(last)
+        if len(self.stored['PendingQueue']) > 1:
+            last = self.stored['PendingQueue'][-1]
+            self.stored['PendingQueue'].clear()
+            self.stored['PendingQueue'].append(last)
 
     def TakeSelected(self):
         """Take the currently selected source."""

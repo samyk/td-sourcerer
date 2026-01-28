@@ -511,3 +511,55 @@ Active source components expose display properties:
 | `LoopCount` | int/str | Completed loops or 'N/A' |
 | `LoopsRemaining` | int/str | Remaining loops or 'N/A' |
 | `Next` | str | Name of next source or 'N/A' |
+
+## SourcererGrid
+
+SourcererGrid is a companion component that displays source thumbnails in a touch-friendly grid layout. Ideal for live performances and touch screen interfaces.
+
+![sourcerer_grid](images/sourcerer_grid.jpg)
+
+### Setup
+
+1. Add the SourcererGrid component to your project
+2. Set the **Sourcerer** parameter to reference your Sourcerer component
+3. Configure grid layout and overflow behavior
+
+### Grid Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| Sourcerer | Reference to the Sourcerer component |
+| Max Per Row | Maximum number of buttons per row |
+| Overflow | How to handle more sources than fit: `scrollbar` or `Pages` |
+
+### Overflow Modes
+
+- **Scrollbar**: All sources displayed in a scrollable grid
+- **Pages**: Sources split across pages with navigation
+
+### Pages
+
+When using Pages mode, navigate between pages programmatically:
+
+```python
+op('SourcererGrid').NextPage()
+op('SourcererGrid').PrevPage()
+```
+
+Access Pages state via dependable properties:
+
+```python
+op('SourcererGrid').CurPage    # Current page number (1-indexed)
+op('SourcererGrid').NumPages   # Total number of pages
+```
+
+### Public Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `CurPage` | int | Current page number (dependable) |
+| `NumPages` | int | Total number of pages (dependable) |
+| `ButtonSize` | int | Calculated button size in pixels (dependable) |
+| `MaxRows` | int | Maximum rows that fit in the grid (dependable) |
+| `ButtonsNum` | int | Number of buttons currently displayed (dependable) |
+| `ButtonsStart` | int | Starting source index for current page (dependable) |

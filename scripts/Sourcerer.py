@@ -106,6 +106,7 @@ class Sourcerer(CallbacksExt):
             {'name': 'Log', 'default': [], 'dependable': True},
             {'name': 'LogFormatted', 'default': [], 'dependable': True},
             {'name': 'PendingQueue', 'default': [], 'dependable': True},
+            {'name': 'SourceNames', 'default': [], 'dependable': True},
         ]
 
         self.stored = StorageManager(self, self.DataComp, storedItems)
@@ -113,8 +114,8 @@ class Sourcerer(CallbacksExt):
         # State machine for transitions
         self.transitionState = TransitionState.IDLE
 
-        source_names = [str(s['Settings']['Name']) for s in self.stored['Sources']]
-        TDF.createProperty(self, 'SourceNames', value=source_names, dependable=True, readOnly=False)
+        # update source list initially
+        self._updateSourceList()
 
     # -------------------------------------------------------------------------
     # Properties
@@ -279,12 +280,12 @@ class Sourcerer(CallbacksExt):
 
         # Create one default source
         source = self._getSourceTemplate('defaultSource')
-        source['Settings']['Name'] = 'Source 0'
+        source['Settings']['Name'] = 'new_source'
         self.stored['Sources'].append(source)
 
         # Reset selection and active source
         self.stored['SelectedSource']['index'] = 0
-        self.stored['SelectedSource']['name'] = 'Source 0'
+        self.stored['SelectedSource']['name'] = 'new_source'
         self.stored['ActiveSource']['index'] = -1
         self.stored['ActiveSource']['name'] = ''
         self.stored['State'] = 0
@@ -304,7 +305,7 @@ class Sourcerer(CallbacksExt):
 
     def _updateSourceList(self):
         """Update the SourceNames dependable property from stored Sources."""
-        self.SourceNames = [str(s['Settings']['Name']) for s in self.stored['Sources']]
+        self.stored['SourceNames'] = [str(s['Settings']['Name']) for s in self.stored['Sources']]
 
     def _getSource(self, source):
         """

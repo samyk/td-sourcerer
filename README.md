@@ -1,4 +1,4 @@
-# Sourcerer Lite
+# Sourcerer
 
 **TouchDesigner version 2025.32280**
 

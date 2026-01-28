@@ -42,11 +42,15 @@ class SourcererGrid(CallbacksExt):
             # Only 'name' is required...
             {'name': 'Data', 'default': None, 'readOnly': False,
                                      'property': True, 'dependable': True},
-            {'name': 'ButtonSize', 'default': 1, 'readOnly': False,
-                                     'property': True, 'dependable': True},
             {'name': 'MaxRows', 'default': 0, 'readOnly': False,
                                      'property': True, 'dependable': True},
-            {'name': 'MaxButtons', 'default': 0, 'readOnly': False,
+            {'name': 'ButtonSize', 'default': 1, 'readOnly': False,
+                                     'property': True, 'dependable': True},
+            {'name': 'ButtonsMax', 'default': 0, 'readOnly': False,
+                                     'property': True, 'dependable': True},
+            {'name': 'ButtonsNum', 'default': 0, 'readOnly': False,
+                                     'property': True, 'dependable': True},
+            {'name': 'ButtonsStart', 'default': 0, 'readOnly': False,
                                      'property': True, 'dependable': True},
             {'name': 'CurPage', 'default': 1, 'readOnly': False,
                                      'property': True, 'dependable': True},
@@ -55,8 +59,7 @@ class SourcererGrid(CallbacksExt):
         ]
         self.stored = StorageManager(self, self.dataComp, storedItems)
 
-        self.updateButtonSize()
-        self.updatePages()
+        self.updateDisplay()
 
     def _calcButtonSize(self):
         bg = self.buttonGrid
@@ -82,8 +85,27 @@ class SourcererGrid(CallbacksExt):
         max_rows = int((bg_height - bg_margins + bg_spacing) / (button_size + bg_spacing))
         return max_rows
 
-    def _calcMaxButtons(self):
+    def _calcButtonsMax(self):
         return self.ownerComp.par.Maxperrow.eval() * self.stored['MaxRows']
+    
+    def _calcButtonsNum(self):
+        sourcerer = self.ownerComp.par.Sourcerer.eval()
+        if sourcerer is None:
+            return 0
+        if self.ownerComp.par.Overflow.eval() == 'scrollbar':
+            return len(sourcerer.Sources)
+        else:
+            total_sources = len(sourcerer.Sources)
+            buttons_per_page = self.ownerComp.par.Maxperrow.eval() * self.stored['MaxRows']
+            start_index = (self.stored['CurPage'] - 1) * buttons_per_page
+            remaining_sources = total_sources - start_index
+            return min(remaining_sources, buttons_per_page)
+        
+    def _calcButtonsStart(self):
+        if self.ownerComp.par.Overflow.eval() == 'scrollbar':
+            return 0
+        else:
+            return (self.stored['CurPage'] - 1) * self.stored['ButtonsMax']
 
     def _calcPages(self):
         sourcerer = self.ownerComp.par.Sourcerer.eval()
@@ -92,16 +114,22 @@ class SourcererGrid(CallbacksExt):
             return
 
         total_sources = len(sourcerer.Sources)
-        buttons_per_page = self.buttonGrid.par.alignmax.eval() * self.MaxRows
+        buttons_per_page = self.ownerComp.par.Maxperrow.eval() * self.stored['MaxRows']
         num_pages = (total_sources + buttons_per_page - 1) // buttons_per_page
         if num_pages < 1:
             num_pages = 1
         self.NumPages = num_pages
+
+    def updateDisplay(self):
+        self.updateButtons()
+        self.updatePages()
     
-    def updateButtonSize(self):
+    def updateButtons(self):
         self.stored['ButtonSize'] = self._calcButtonSize()
         self.stored['MaxRows'] = self._calcMaxRows()
-        self.stored['MaxButtons'] = self._calcMaxButtons()
+        self.stored['ButtonsMax'] = self._calcButtonsMax()
+        self.stored['ButtonsNum'] = self._calcButtonsNum()
+        self.stored['ButtonsStart'] = self._calcButtonsStart()
 
     def updatePages(self):
         self._calcPages()
@@ -116,21 +144,20 @@ class SourcererGrid(CallbacksExt):
         sourcerer.Take(index)
 
     def onPanelSizeChange(self):
-        self.updateButtonSize()
-        self.updatePages()
+        self.updateDisplay()
 
     def onSourcesChange(self):
-        self.updateButtonSize()
-        self.updatePages()
-        print('onSourcesChange called')
+        self.updateDisplay()
 
     def NextPage(self):
         if self.stored['CurPage'] < self.stored['NumPages']:
             self.stored['CurPage'] += 1
+            self.updateDisplay()
 
     def PrevPage(self):
         if self.stored['CurPage'] > 1:
             self.stored['CurPage'] -= 1
+            self.updateDisplay()
 
 
 

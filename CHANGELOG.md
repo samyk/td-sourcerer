@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.1] - 2025-01-28
+
+### Fixed
+- onSwitchToSource callback renamed to onTake.
+
 ## [2.0.0] - 2025-01-28
 
 ### Added

@@ -4,6 +4,7 @@
 
 ### Fixed
 - onSwitchToSource callback renamed to onTake.
+- Changed CopySourceData to return dict rather than DependDict
 
 ## [2.0.0] - 2025-01-28
 
@@ -33,7 +34,7 @@
 - Dependency issues with component initialization
 - Panels closing on reload
 
-## [1.0.0] - 2020 - Initial Release
+## [1.0.0] - 2019-12-19 - Initial Release
 
 ### Added
 - Core source management (add, delete, rename, reorder)

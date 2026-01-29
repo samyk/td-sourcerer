@@ -211,14 +211,7 @@ vec4 Blur(vec2 uv)
 // Matte goes black to white - black pixels transition first
 vec4 LumaMatte(vec2 uv, float luma)
 {
-	// Where luma < progress, show incoming; otherwise show outgoing
-	// Black (0) transitions first, white (1) transitions last
-	if (luma < progress) {
-		return getIncoming(uv);
-	}
-	else {
-		return getOutgoing(uv);
-	}
+	return mix(getIncoming(uv), getOutgoing(uv), luma);
 }
 
 // File - luma matte transition from file texture (input 2)

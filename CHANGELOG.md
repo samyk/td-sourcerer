@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.2] - 2025-01-29
+### Fixed
+- Fixed issue with luma matte lookup on file and top transitions
+
 ## [2.0.1] - 2025-01-28
 
 ### Fixed

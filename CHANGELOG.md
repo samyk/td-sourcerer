@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.4] - 2025-01-29
+
+### Fixed
+- Fixed log clear button inverted display logic
+
 ## [2.0.3] - 2025-01-29
 
 ### Fixed

@@ -949,7 +949,7 @@ class Sourcerer(CallbacksExt):
         """
         source_data, _, _ = self._getSource(source)
         if source_data is not None:
-            return copy.deepcopy(source_data)
+            return copy.deepcopy(source_data).getRaw()
         return None
 
     def PasteSourceData(self, index, data):

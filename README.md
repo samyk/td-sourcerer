@@ -38,14 +38,14 @@ Sources can be created, arranged, and triggered using the toolbar buttons above 
 ![source_list_controls](images/source_list_controls.jpg)
 
 - **Add** - Add new source
-- **Switch** - Switch to selected source
+- **TAKE** - Take selected source
 - **Delete** - Delete selected source
 - **Lock** - Lock/unlock editing (prevents accidental changes)
 
 Sources can be reordered by dragging within the list.
 
 **Right-click context menu:**
-- Trigger - Switch to the selected source
+- Take - Take the selected source
 - Copy / Paste - Copy and paste source configurations
 - Delete - Remove the selected source
 - Import - Import sources from JSON file

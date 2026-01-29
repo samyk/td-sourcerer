@@ -319,7 +319,7 @@ class SourcererList:
 
     def _openContextMenu(self, source_index):
         """Open right-click context menu."""
-        items = ['Trigger', 'Copy', 'Paste', 'Delete', 'Import', 'Export Selected', 'Export All']
+        items = ['Take', 'Copy', 'Paste', 'Delete', 'Import', 'Export Selected', 'Export All']
         disabled = [] if self.clipboard else ['Paste']
 
         op.TDResources.op('popMenu').Open(
@@ -336,7 +336,7 @@ class SourcererList:
         source_index = info['details']['source_index']
         sourcerer = op(self.ownerComp.par.Sourcerer)
 
-        if action == 'Trigger':
+        if action == 'Take':
             sourcerer.Take(source_index)
         elif action == 'Copy':
             self.clipboard = sourcerer.CopySourceData(source_index)

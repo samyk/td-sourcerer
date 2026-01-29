@@ -1,6 +1,13 @@
 # Changelog
 
+## [2.0.3] - 2025-01-29
+
+### Fixed
+- Renamed Trigger to Take in right click context menu
+- Flipped order of luma matte lookup on file and top transitions
+
 ## [2.0.2] - 2025-01-29
+
 ### Fixed
 - Fixed issue with luma matte lookup on file and top transitions
 

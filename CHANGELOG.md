@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.5] - 2025-01-30
+
+### Fixed
+- Fixed export issue. Added .getRaw().
+
 ## [2.0.4] - 2025-01-29
 
 ### Fixed

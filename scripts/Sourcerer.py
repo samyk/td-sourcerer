@@ -564,7 +564,7 @@ class Sourcerer(CallbacksExt):
             return
 
         with open(f, 'w') as json_file:
-            json.dump(self.stored['Sources'], json_file)
+            json.dump(self.stored['Sources'].getRaw(), json_file)
 
     def ExportSelected(self):
         """Export the selected source to a JSON file."""
@@ -574,7 +574,7 @@ class Sourcerer(CallbacksExt):
 
         selected = self.stored['SelectedSource']['index']
         with open(f, 'w') as json_file:
-            json.dump([self.stored['Sources'][selected]], json_file)
+            json.dump([self.stored['Sources'][selected].getRaw()], json_file)
 
     def ExportRange(self, range_start=None, range_end=None):
         """Export a range of sources to a JSON file."""
